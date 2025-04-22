@@ -35,23 +35,27 @@ async def handle_webhook(request: Request):
     # נסה לקבל את מזהה איש הקשר
     person_id = None
     
-    # מסלולים אפשריים למזהה איש הקשר
-    paths_to_try = [
-        # מבנה מקורי
-        lambda d: d.get("current", {}).get("person_id", {}).get("value"),
-        # ממטא-דאטה
-        lambda d: d.get("meta", {}).get("id"),
-        # משדה data.data
-        lambda d: d.get("data", {}).get("id"),
-        # ישירות
-        lambda d: d.get("id"),
-        # עבור v2 API
-        lambda d: d.get("current", {}).get("id"),
-        # אם זה רשומת אנשי קשר
-        lambda d: d.get("current", {}).get("id") if d.get("event") == "updated.person" else None,
-        # מתוך previous
-        lambda d: d.get("previous", {}).get("id")
-    ]
+    # אם יש שדה data.id - זה המזהה שנצטרך להשתמש בו עבור ה-API
+    if "data" in data and "id" in data["data"]:
+        person_id = data["data"]["id"]
+        print(f"Found person_id in data.id: {person_id}")
+    # אם אין את זה, נסה את המיקומים האחרים
+    else:
+        # מסלולים אפשריים למזהה איש הקשר
+        paths_to_try = [
+            # מבנה מקורי
+            lambda d: d.get("current", {}).get("person_id", {}).get("value"),
+            # ישירות
+            lambda d: d.get("id"),
+            # עבור v2 API
+            lambda d: d.get("current", {}).get("id"),
+            # אם זה רשומת אנשי קשר
+            lambda d: d.get("current", {}).get("id") if d.get("event") == "updated.person" else None,
+            # מתוך previous
+            lambda d: d.get("previous", {}).get("id"),
+            # ממטא-דאטה - מידע שלא יעבוד עם API של Pipedrive
+            lambda d: d.get("meta", {}).get("entity_id")
+        ]
     
     # בדוק את כל האפשרויות למזהה
     for i, path_func in enumerate(paths_to_try):
