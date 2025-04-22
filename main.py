@@ -94,7 +94,7 @@ def create_jotform_task(person_id, field_value):
         
         # הכנת המשימה
         task_payload = {
-            "subject": "מילוי טופס JotForm",
+            "subject": "לחיצה על הקישור תוביל לשאלון תחומים",
             "done": 0,
             "person_id": person_id,
             "note": f"היי! הנה הקישור שלך לטופס:\n{jotform_link}",
