@@ -130,30 +130,70 @@ async def handle_webhook(request: Request):
     
     print(f"\nProceeding with person_id: {person_id} and field_value: {field_value}")
 
-    person_res = requests.get(
-        f"https://api.pipedrive.com/v1/persons/{person_id}?api_token={PIPEDRIVE_API_KEY}")
-    person = person_res.json().get("data", {})
-
-    first_name = person.get("first_name", "")
-    last_name = person.get("last_name", "")
-    phone = person.get("phone", [{}])[0].get("value", "")
-    email = person.get("email", [{}])[0].get("value", "")
-
-    jotform_link = f"{JOTFORM_URL}?first_name={first_name}&last_name={last_name}&phone={phone}&email={email}"
-
-    task_payload = {
-        "subject": "מילוי טופס JotForm",
-        "done": 0,
-        "person_id": person_id,
-        "note": f"היי! הנה הקישור שלך לטופס:\n{jotform_link}",
-    }
-
-    requests.post(
-        f"https://api.pipedrive.com/v1/activities?api_token={PIPEDRIVE_API_KEY}",
-        json=task_payload
-    )
-
-    return {"status": "created", "link": jotform_link}
+    # שליפת פרטי איש הקשר מ-Pipedrive
+    api_url = f"https://api.pipedrive.com/v1/persons/{person_id}?api_token={PIPEDRIVE_API_KEY}"
+    print(f"Fetching person details from: {api_url}")
+    
+    try:
+        person_res = requests.get(api_url)
+        print(f"API Response Status: {person_res.status_code}")
+        print(f"API Response: {person_res.text[:200]}...") # הדפס רק חלק מהתשובה למנוע לוגים ארוכים מדי
+        
+        person_data = person_res.json()
+        if "data" not in person_data or not person_data["data"]:
+            print(f"ERROR: Could not retrieve person data. Response: {person_res.text}")
+            return {"status": "error", "message": "Could not retrieve person data"}
+            
+        person = person_data.get("data", {})
+        print(f"Person data retrieved: {str(person)[:200]}...") # הדפס רק חלק מהנתונים
+        
+        # חילוץ פרטי איש הקשר
+        first_name = person.get("first_name", "")
+        last_name = person.get("last_name", "")
+        
+        # חילוץ מספר טלפון בדרך בטוחה יותר
+        phone = ""
+        if person.get("phone") and len(person.get("phone", [])) > 0:
+            phone = person.get("phone", [{}])[0].get("value", "")
+        
+        # חילוץ אימייל בדרך בטוחה יותר
+        email = ""
+        if person.get("email") and len(person.get("email", [])) > 0:
+            email = person.get("email", [{}])[0].get("value", "")
+        
+        print(f"Extracted details - Name: {first_name} {last_name}, Phone: {phone}, Email: {email}")
+        
+        # יצירת קישור לטופס JotForm
+        jotform_link = f"{JOTFORM_URL}?first_name={first_name}&last_name={last_name}&phone={phone}&email={email}"
+        print(f"Generated JotForm link: {jotform_link}")
+        
+        # הכנת הנתונים למשימה חדשה
+        task_payload = {
+            "subject": "מילוי טופס JotForm",
+            "done": 0,
+            "person_id": person_id,
+            "note": f"היי! הנה הקישור שלך לטופס:\n{jotform_link}",
+        }
+        print(f"Task payload: {task_payload}")
+        
+        # יצירת משימה חדשה ב-Pipedrive
+        task_url = f"https://api.pipedrive.com/v1/activities?api_token={PIPEDRIVE_API_KEY}"
+        print(f"Creating task at: {task_url}")
+        
+        task_res = requests.post(task_url, json=task_payload)
+        print(f"Task creation response status: {task_res.status_code}")
+        print(f"Task creation response: {task_res.text[:200]}...") # הדפס רק חלק מהתשובה
+        
+        if task_res.status_code != 201 and task_res.status_code != 200:
+            print(f"WARNING: Task creation might have failed. Status: {task_res.status_code}")
+        
+        return {"status": "created", "link": jotform_link}
+        
+    except Exception as e:
+        print(f"ERROR in webhook processing: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return {"status": "error", "message": str(e)}
 
 @app.get("/")
 async def root():
