@@ -1,10 +1,16 @@
 from fastapi import FastAPI, Request
 import requests
+import os
+import uvicorn
+from dotenv import load_dotenv
+
+# טען משתני סביבה מקובץ .env (אם קיים)
+load_dotenv()
 
 app = FastAPI()
 
 JOTFORM_URL = "https://form.jotform.com/202432710986455"
-PIPEDRIVE_API_KEY = "TO_BE_REPLACED"  # יוחלף ב-Railway כ-ENV
+PIPEDRIVE_API_KEY = os.getenv("PIPEDRIVE_API_KEY", "TO_BE_REPLACED")  # יוחלף ב-Railway כ-ENV
 
 @app.post("/webhook")
 async def handle_webhook(request: Request):
@@ -39,3 +45,11 @@ async def handle_webhook(request: Request):
     )
 
     return {"status": "created", "link": jotform_link}
+
+@app.get("/")
+async def root():
+    return {"message": "Pipedrive-JotForm Bridge is running. Use /webhook endpoint for integration."}
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
