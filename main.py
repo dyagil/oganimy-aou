@@ -26,11 +26,11 @@ def is_recent_task(person_id, field_value):
     task_key = f"{person_id}:{field_value}"
     current_time = datetime.now()
     
-    # בדיקה אם כבר יצרנו משימה זהה לאחרונה (ב-2 דקות האחרונות)
+    # בדיקה אם כבר יצרנו משימה זהה לאחרונה (ב-30 שניות האחרונות)
     if task_key in task_history:
         last_time = task_history[task_key]
-        # אם עברו פחות מ-2 דקות מהפעם האחרונה שיצרנו משימה זהה
-        if current_time - last_time < timedelta(minutes=2):
+        # אם עברו פחות מ-30 שניות מהפעם האחרונה שיצרנו משימה זהה
+        if current_time - last_time < timedelta(seconds=30):
             print(f"Duplicate task detected for {task_key}. Last created at {last_time}")
             return True
     
@@ -208,6 +208,7 @@ async def handle_webhook(request: Request, background_tasks: BackgroundTasks):
     
     # אם מצאנו את הנתונים הנדרשים - בדוק אם זו משימה כפולה
     if person_id and field_value:
+        # בדיקת כפילות רק בזמן קצר
         if is_recent_task(person_id, field_value):
             print(f"Skipping duplicate task for person_id: {person_id} with field_value: {field_value}")
             return {"status": "skipped", "reason": "Duplicate task", "person_id": person_id}
@@ -222,6 +223,12 @@ async def handle_webhook(request: Request, background_tasks: BackgroundTasks):
 @app.get("/")
 async def root():
     return {"message": "Pipedrive-JotForm Bridge is running. Use /webhook endpoint for integration."}
+
+@app.post("/clear-history")
+async def clear_history():
+    """נקה את היסטוריית המשימות כדי לאפשר יצירת משימות חדשות"""
+    task_history.clear()
+    return {"status": "success", "message": "Task history cleared"}
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
