@@ -5,6 +5,8 @@ import uvicorn
 import json
 import time
 import traceback
+import hashlib
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # טען משתני סביבה מקובץ .env (אם קיים)
@@ -14,6 +16,26 @@ app = FastAPI()
 
 JOTFORM_URL = "https://form.jotform.com/202432710986455"
 PIPEDRIVE_API_KEY = os.getenv("PIPEDRIVE_API_KEY", "TO_BE_REPLACED")  # יוחלף ב-Railway כ-ENV
+
+# שמירת מזהה עבור משימות שכבר נוצרו כדי למנוע כפילויות
+task_history = {}
+
+# פונקציה שבודקת אם כבר יצרנו משימה לאיש קשר ספציפי לאחרונה
+def is_recent_task(person_id, field_value):
+    task_key = f"{person_id}:{field_value}"
+    current_time = datetime.now()
+    
+    # בדיקה אם כבר יצרנו משימה זהה לאחרונה (ב-2 דקות האחרונות)
+    if task_key in task_history:
+        last_time = task_history[task_key]
+        # אם עברו פחות מ-2 דקות מהפעם האחרונה שיצרנו משימה זהה
+        if current_time - last_time < timedelta(minutes=2):
+            print(f"Duplicate task detected for {task_key}. Last created at {last_time}")
+            return True
+    
+    # עדכון זמן היצירה של המשימה הנוכחית
+    task_history[task_key] = current_time
+    return False
 
 # פונקציה שתרוץ ברקע ליצירת משימה ב-Pipedrive
 def create_jotform_task(person_id, field_value):
@@ -168,8 +190,12 @@ async def handle_webhook(request: Request, background_tasks: BackgroundTasks):
             field_value = custom_field["id"]
             print(f"Found field in root.custom_fields: {field_value}")
     
-    # אם מצאנו את הנתונים הנדרשים - הפעל את המשימה ברקע
+    # אם מצאנו את הנתונים הנדרשים - בדוק אם זו משימה כפולה
     if person_id and field_value:
+        if is_recent_task(person_id, field_value):
+            print(f"Skipping duplicate task for person_id: {person_id} with field_value: {field_value}")
+            return {"status": "skipped", "reason": "Duplicate task", "person_id": person_id}
+        
         print(f"Scheduling background task for person_id: {person_id} with field_value: {field_value}")
         background_tasks.add_task(create_jotform_task, person_id, field_value)
         return {"status": "processing", "person_id": person_id}
