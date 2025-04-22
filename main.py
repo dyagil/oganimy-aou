@@ -86,12 +86,8 @@ def create_jotform_task(person_id, field_value):
         if person.get("email") and len(person.get("email", [])) > 0:
             email = person.get("email", [{}])[0].get("value", "")
         
-        # חילוץ קוד הלקוח (מזהה)
-        client_code = ""
-        if "c27fc57ed4c4e3c9a8c30b6eb6c2fec98a1a8a7b" in person.get("custom_fields", {}):
-            client_code = person.get("custom_fields", {}).get("c27fc57ed4c4e3c9a8c30b6eb6c2fec98a1a8a7b", "")
-            if isinstance(client_code, dict) and "value" in client_code:
-                client_code = client_code["value"]
+        # השתמש ב-ID של איש הקשר כקוד הלקוח
+        client_code = person_id  # ID איש הקשר בפייפדרייב
         
         print(f"Extracted person details: {first_name} {last_name}, phone: {phone}, email: {email}, client_code: {client_code}")
         
