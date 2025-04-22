@@ -14,12 +14,88 @@ PIPEDRIVE_API_KEY = os.getenv("PIPEDRIVE_API_KEY", "TO_BE_REPLACED")  # יוחל
 
 @app.post("/webhook")
 async def handle_webhook(request: Request):
+    # קבל את המידע מהבקשה
     data = await request.json()
-    person_id = data.get("current", {}).get("person_id", {}).get("value")
-    field_value = data.get("current", {}).get("51b05f4fe90c769c81299ac0d2bad3e75a02903e")
-
-    if not field_value:
-        return {"status": "ignored"}
+    
+    # הדפס את כל הבקשה לדיבוג
+    print("================ WEBHOOK REQUEST =================")
+    print(f"Full webhook data: {data}")
+    
+    # נסה לזהות את המבנה של הנתונים
+    print("\nData Structure: " + ", ".join(data.keys()))
+    
+    # בדיקת קיום נתונים בסיסיים
+    if not data:
+        return {"status": "error", "message": "No data received"}
+    
+    # אם יש מבנה של אירוע - הדפס את המידע
+    if "event" in data:
+        print(f"Event Type: {data['event']}")
+    
+    # נסה לקבל את מזהה איש הקשר
+    person_id = None
+    
+    # מסלולים אפשריים למזהה איש הקשר
+    paths_to_try = [
+        # מבנה מקורי
+        lambda d: d.get("current", {}).get("person_id", {}).get("value"),
+        # ממטא-דאטה
+        lambda d: d.get("meta", {}).get("id"),
+        # משדה data.data
+        lambda d: d.get("data", {}).get("id"),
+        # ישירות
+        lambda d: d.get("id"),
+        # עבור v2 API
+        lambda d: d.get("current", {}).get("id"),
+        # אם זה רשומת אנשי קשר
+        lambda d: d.get("current", {}).get("id") if d.get("event") == "updated.person" else None,
+        # מתוך previous
+        lambda d: d.get("previous", {}).get("id")
+    ]
+    
+    # בדוק את כל האפשרויות למזהה
+    for i, path_func in enumerate(paths_to_try):
+        try:
+            val = path_func(data)
+            if val:
+                person_id = val
+                print(f"Found person_id via path {i+1}: {person_id}")
+                break
+        except Exception as e:
+            print(f"Error checking path {i+1}: {e}")
+    
+    # בדיקת השדה המיוחד
+    field_value = None
+    
+    # נסה למצוא שדות בכל מקום אפשרי
+    locations_to_check = [
+        ("current", data.get("current", {})),
+        ("data", data.get("data", {})),
+        ("root", data)
+    ]
+    
+    target_field_id = "51b05f4fe90c769c81299ac0d2bad3e75a02903e"  # המזהה שמחפשים
+    
+    # חיפוש בכל המיקומים האפשריים
+    for location_name, location_data in locations_to_check:
+        print(f"\nChecking fields in {location_name}:")
+        if isinstance(location_data, dict):
+            for key, value in location_data.items():
+                # הדפס את כל השדות שמצאנו
+                print(f"  Field: {key} = {value}")
+                
+                # בדוק התאמה למזהה השדה שאנחנו מחפשים
+                if key == target_field_id:
+                    field_value = value
+                    print(f"  >>> Found target field {key} = {value}")
+    
+    # חזור הודעת דיבוג אם חסרים נתונים
+    if not field_value or not person_id:
+        result = {"status": "ignored", "reason": f"Missing data - field: {bool(field_value)}, person: {bool(person_id)}"}
+        print(f"Returning: {result}")
+        return result
+    
+    print(f"\nProceeding with person_id: {person_id} and field_value: {field_value}")
 
     person_res = requests.get(
         f"https://api.pipedrive.com/v1/persons/{person_id}?api_token={PIPEDRIVE_API_KEY}")
