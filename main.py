@@ -67,27 +67,54 @@ async def handle_webhook(request: Request):
     # בדיקת השדה המיוחד
     field_value = None
     
-    # נסה למצוא שדות בכל מקום אפשרי
+    # נסה למצוא את השדה המיוחד
+    target_field_id = "51b05f4fe90c769c81299ac0d2bad3e75a02903e"  # המזהה שמחפשים
+    field_value = None
+    
+    # בדוק ספציפית את המבנה שזיהינו בלוגים
+    # 1. בדוק אם השדה נמצא בתוך custom_fields בתוך data
+    if "data" in data and "custom_fields" in data["data"] and target_field_id in data["data"]["custom_fields"]:
+        custom_field = data["data"]["custom_fields"][target_field_id]
+        if custom_field and isinstance(custom_field, dict) and "id" in custom_field:
+            field_value = custom_field["id"]
+            print(f"Found field in data.custom_fields: {field_value}")
+    
+    # 2. בדוק אם השדה נמצא ישירות בתוך current
+    elif "current" in data and "custom_fields" in data["current"] and target_field_id in data["current"]["custom_fields"]:
+        custom_field = data["current"]["custom_fields"][target_field_id]
+        if custom_field and isinstance(custom_field, dict) and "id" in custom_field:
+            field_value = custom_field["id"]
+            print(f"Found field in current.custom_fields: {field_value}")
+    
+    # 3. בדוק אם השדה נמצא ישירות בשורש
+    elif "custom_fields" in data and target_field_id in data["custom_fields"]:
+        custom_field = data["custom_fields"][target_field_id]
+        if custom_field and isinstance(custom_field, dict) and "id" in custom_field:
+            field_value = custom_field["id"]
+            print(f"Found field in root.custom_fields: {field_value}")
+    
+    # הדפס מידע על כל שדה שמצאנו
+    print("\nInspecting all available fields:")
+    
+    # עבור על כל המיקומים האפשריים
     locations_to_check = [
-        ("current", data.get("current", {})),
-        ("data", data.get("data", {})),
-        ("root", data)
+        ("data.custom_fields", data.get("data", {}).get("custom_fields", {})),
+        ("current.custom_fields", data.get("current", {}).get("custom_fields", {})),
+        ("root.custom_fields", data.get("custom_fields", {}))
     ]
     
-    target_field_id = "51b05f4fe90c769c81299ac0d2bad3e75a02903e"  # המזהה שמחפשים
-    
-    # חיפוש בכל המיקומים האפשריים
     for location_name, location_data in locations_to_check:
-        print(f"\nChecking fields in {location_name}:")
         if isinstance(location_data, dict):
+            print(f"Fields in {location_name}:")
             for key, value in location_data.items():
-                # הדפס את כל השדות שמצאנו
-                print(f"  Field: {key} = {value}")
+                print(f"  {key} = {value}")
                 
-                # בדוק התאמה למזהה השדה שאנחנו מחפשים
-                if key == target_field_id:
-                    field_value = value
-                    print(f"  >>> Found target field {key} = {value}")
+                # בדוק אם זה השדה המיוחד
+                if key == target_field_id and not field_value:
+                    print(f"  >>> Found target field but couldn't extract id previously")
+                    if isinstance(value, dict) and "id" in value:
+                        field_value = value["id"]
+                        print(f"  >>> Now extracted id: {field_value}")
     
     # חזור הודעת דיבוג אם חסרים נתונים
     if not field_value or not person_id:
