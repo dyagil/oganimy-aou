@@ -34,6 +34,7 @@ async def handle_webhook(request: Request):
     
     # נסה לקבל את מזהה איש הקשר
     person_id = None
+    paths_to_try = []
     
     # אם יש שדה data.id - זה המזהה שנצטרך להשתמש בו עבור ה-API
     if "data" in data and "id" in data["data"]:
@@ -57,16 +58,17 @@ async def handle_webhook(request: Request):
             lambda d: d.get("meta", {}).get("entity_id")
         ]
     
-    # בדוק את כל האפשרויות למזהה
-    for i, path_func in enumerate(paths_to_try):
-        try:
-            val = path_func(data)
-            if val:
-                person_id = val
-                print(f"Found person_id via path {i+1}: {person_id}")
-                break
-        except Exception as e:
-            print(f"Error checking path {i+1}: {e}")
+    # בדוק את כל האפשרויות למזהה רק אם עדיין לא מצאנו את המזהה
+    if not person_id and paths_to_try:
+        for i, path_func in enumerate(paths_to_try):
+            try:
+                val = path_func(data)
+                if val:
+                    person_id = val
+                    print(f"Found person_id via path {i+1}: {person_id}")
+                    break
+            except Exception as e:
+                print(f"Error checking path {i+1}: {e}")
     
     # בדיקת השדה המיוחד
     field_value = None
