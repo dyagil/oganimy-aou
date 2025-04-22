@@ -91,8 +91,8 @@ def create_jotform_task(person_id, field_value):
         
         print(f"Extracted person details: {first_name} {last_name}, phone: {phone}, email: {email}, client_code: {client_code}")
         
-        # יצירת קישור לטופס JotForm כולל קוד לקוח בשדה typeA9
-        jotform_link = f"{JOTFORM_URL}?first_name={first_name}&last_name={last_name}&phone={phone}&email={email}&typeA9={client_code}"
+        # יצירת קישור לטופס JotForm עם שמות פרמטרים נכונים
+        jotform_link = f"{JOTFORM_URL}?name={first_name}&last_name={last_name}&phone={phone}&email={email}&typeA9={client_code}"
         print(f"Generated JotForm link: {jotform_link}")
         
         # הכנת המשימה
