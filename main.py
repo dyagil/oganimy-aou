@@ -8,6 +8,7 @@ import traceback
 import hashlib
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+import urllib.parse
 
 # טען משתני סביבה מקובץ .env (אם קיים)
 load_dotenv()
@@ -89,8 +90,23 @@ def create_jotform_task(person_id, field_value):
         print(f"Extracted person details: {first_name} {last_name}, phone: {phone}, email: {email}")
         
         # יצירת קישור לטופס JotForm
-        jotform_link = f"{JOTFORM_URL}?first_name={first_name}&last_name={last_name}&phone={phone}&email={email}"
-        print(f"Generated JotForm link: {jotform_link}")
+        jotform_link = f"{JOTFORM_URL}?first_name={urllib.parse.quote(first_name)}&last_name={urllib.parse.quote(last_name)}&phone={urllib.parse.quote(phone)}&email={urllib.parse.quote(email)}"
+        print(f"Original JotForm link: {jotform_link}")
+        
+        # קיצור הקישור באמצעות TinyURL
+        try:
+            tinyurl_api = f"https://tinyurl.com/api-create.php?url={urllib.parse.quote(jotform_link)}"
+            shortened_url_response = requests.get(tinyurl_api, timeout=10)
+            
+            if shortened_url_response.status_code == 200:
+                shortened_url = shortened_url_response.text.strip()
+                print(f"Shortened URL: {shortened_url}")
+                jotform_link = shortened_url
+            else:
+                print(f"Failed to shorten URL. Status code: {shortened_url_response.status_code}")
+        except Exception as e:
+            print(f"Error shortening URL: {str(e)}")
+            # במקרה של שגיאה, נשתמש בקישור המקורי
         
         # הכנת המשימה
         task_payload = {
