@@ -389,10 +389,21 @@ async def update_pipedrive_person(person_id, form_data):
         if "_metadata" in form_data and "field_labels" in form_data["_metadata"]:
             field_labels = form_data["_metadata"]["field_labels"]
         
-        # הוספת כל התשובות לפתק
+        # רשימת שדות להתעלם מהם לחלוטין
+        ignored_fields = ["typeA9", "typeA8", "date", "ip", "date124", "form_name"]
+        
+        # ערכים שיחשבו כריקים
+        empty_values = ["", "null", "undefined", None, "0", "-"]
+        
+        # הוספת התשובות הלא ריקות לפתק
+        items_added = 0
         for field_name, field_value in form_data.items():
-            # התעלם משדות מערכת וממזהה הלקוח
-            if field_name != "typeA9" and not field_name.startswith("_"):
+            # התעלם משדות להתעלמות, שדות מערכת ושדות ריקים
+            if (field_name not in ignored_fields and 
+                not field_name.startswith("_") and 
+                field_value not in empty_values and 
+                str(field_value).strip() != ""):
+                
                 # ניסיון להשיג כותרת שדה אם קיימת
                 if field_name in field_labels and field_labels[field_name].strip():
                     # שימוש בכותרת השדה האמיתית מה-API
@@ -409,9 +420,11 @@ async def update_pipedrive_person(person_id, form_data):
                     elif field_name.startswith("typeA"):
                         field_label = "שדה " + field_name.replace("typeA", "")
                 
+                # הוספת השדה המלא לפתק
                 note_content += f"**{field_label}**: {field_value}\n"
+                items_added += 1
         
-        print(f"Prepared note content from form data with {len(form_data)} fields")
+        print(f"Prepared note content with {items_added} non-empty fields out of {len(form_data)} total fields")
         
         # יצירת הפתק בפייפדרייב
         note_payload = {
