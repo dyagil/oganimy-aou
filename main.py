@@ -399,7 +399,8 @@ async def update_pipedrive_fields(person_id, form_data):
         # מיפוי בין שדות ג'וטפורם לשדות פייפדרייב
         # מפתח: שדה ג'וטפורם, ערך: מזהה שדה פייפדרייב
         field_mapping = {
-            "input18": "aef7138242c2a32ca51ec09c35df1bfa4c756f2c"
+            "input18": "aef7138242c2a32ca51ec09c35df1bfa4c756f2c",
+            "input109": "298a5a71694995d831cd85c12084b71714234057"  # מספר תעודת זהות
             # הוסף כאן מיפויים נוספים
         }
         
