@@ -437,7 +437,32 @@ async def update_pipedrive_fields(person_id, form_data):
         for jotform_field, pipedrive_field in field_mapping.items():
             if jotform_field in form_data and form_data[jotform_field]:
                 # בדיקה שיש ערך בשדה ושהוא לא ריק
-                fields_to_update[pipedrive_field] = form_data[jotform_field]
+                
+                # טיפול מיוחד בשדה תאריך לידה
+                if jotform_field == "input117":
+                    try:
+                        # הדפסת הערך המקורי לצורך דיבוג
+                        print(f"Original date value from JotForm: {form_data[jotform_field]}")
+                        
+                        # ניסיון לפרש את התאריך לפי פורמטים שונים
+                        import datetime
+                        from dateutil import parser
+                        
+                        # ניסיון לפרש את התאריך באמצעות parser גמיש
+                        parsed_date = parser.parse(form_data[jotform_field], dayfirst=True)
+                        
+                        # המרה לפורמט YYYY-MM-DD שפייפדרייב מצפה לו
+                        formatted_date = parsed_date.strftime("%Y-%m-%d")
+                        print(f"Converted date to format YYYY-MM-DD: {formatted_date}")
+                        
+                        fields_to_update[pipedrive_field] = formatted_date
+                    except Exception as e:
+                        print(f"Error converting date format: {e}")
+                        # במקרה של שגיאה, ננסה להשתמש בערך המקורי
+                        fields_to_update[pipedrive_field] = form_data[jotform_field]
+                else:
+                    # טיפול רגיל לשאר השדות
+                    fields_to_update[pipedrive_field] = form_data[jotform_field]
         
         print(f"Fields to update: {fields_to_update}")
         
