@@ -243,6 +243,113 @@ async def clear_history():
     task_history.clear()
     return {"status": "success", "message": "Task history cleared"}
 
+@app.post("/jotform-webhook")
+async def handle_jotform_webhook(request: Request):
+    """נקודת קצה לקבלת מידע מטופס JotForm ועדכון כרטיס הלקוח בפייפדרייב"""
+    try:
+        # המידע מ-JotForm מגיע בפורמט אחר מאשר JSON
+        form_data = await request.form()
+        print("================ JOTFORM WEBHOOK REQUEST =================")
+        print(f"JotForm data received with keys: {', '.join(form_data.keys())}")
+        
+        # בדיקת המידע שמתקבל מ-JotForm
+        if not form_data:
+            return {"status": "error", "message": "No data received from JotForm"}
+        
+        # ניסיון לחלץ את מזהה הלקוח מפייפדרייב (שהועבר בשדה typeA9)
+        client_id = None
+        if "typeA9" in form_data:
+            client_id = form_data.get("typeA9")
+            print(f"Found client ID: {client_id}")
+        else:
+            # אם אין מידע על מזהה הלקוח, לא ניתן לעדכן את כרטיס הלקוח
+            return {"status": "error", "message": "Client ID not found in form data"}
+        
+        # איסוף מידע מהטופס - תלוי בהגדרות השדות בטופס שלך
+        form_submission = {}
+        for key, value in form_data.items():
+            # מסנן שדות מערכת, לוקח רק שדות שמתחילים באות ולא בסמל
+            if key.startswith(('q', 'Q')) and not key.startswith('_'):
+                form_submission[key] = value
+        
+        print(f"Extracted form fields: {form_submission}")
+        
+        # עדכון כרטיס הלקוח בפייפדרייב
+        success = await update_pipedrive_person(client_id, form_submission)
+        
+        if success:
+            return {"status": "success", "message": "Person updated in Pipedrive"}
+        else:
+            return {"status": "error", "message": "Failed to update person in Pipedrive"}
+            
+    except Exception as e:
+        print(f"ERROR in JotForm webhook handler: {str(e)}")
+        print(traceback.format_exc())
+        return {"status": "error", "message": f"Internal error: {str(e)}"}
+
+async def update_pipedrive_person(person_id, form_data):
+    """עדכון פרטי לקוח בפייפדרייב עם נתונים מהטופס"""
+    try:
+        # בונה את הנתונים לעדכון. כאן יש להתאים את השדות לפי הצורך
+        update_data = {
+            "6cbed5fa23ac3ad0962763e941cb057a63a84a23": "" # לדוגמה: שדה מותאם אישית בפייפדרייב
+        }
+        
+        # מיפוי שדות JotForm לשדות מותאמים אישית בפייפדרייב
+        field_mapping = {
+            # שדה ב-JotForm: מזהה שדה מותאם אישית בפייפדרייב
+            "q3_input3": "6cbed5fa23ac3ad0962763e941cb057a63a84a23",  # דוגמא - יש להחליף במזהים אמיתיים
+            "q4_input4": "57b60e08146e63d0e66c4de9c8f46de9ae0bb2e0"
+        }
+        
+        # העברת הנתונים מהטופס לשדות המתאימים בפייפדרייב
+        for jotform_field, value in form_data.items():
+            if jotform_field in field_mapping:
+                pipedrive_field = field_mapping[jotform_field]
+                update_data[pipedrive_field] = value
+                print(f"Mapping field {jotform_field} to {pipedrive_field} with value: {value}")
+        
+        # בניית האובייקט לעדכון
+        payload = {
+            # שדות רגילים שאולי תרצה לעדכן
+            # "name": form_data.get("name", ""),
+            
+            # שדות מותאמים אישית
+            "custom_fields": update_data
+        }
+        
+        # העדכון עצמו של הלקוח בפייפדרייב
+        api_url = f"https://api.pipedrive.com/v1/persons/{person_id}?api_token={PIPEDRIVE_API_KEY}"
+        
+        # ניסיון עם מספר ניסיונות חוזרים
+        for attempt in range(3):
+            try:
+                print(f"Attempt {attempt+1}: Updating person data in Pipedrive for ID: {person_id}")
+                print(f"Payload: {json.dumps(payload)}")
+                
+                # שימוש ב-PUT לעדכון המידע
+                response = requests.put(api_url, json=payload, timeout=10)
+                
+                if response.status_code == 200:
+                    print(f"SUCCESS: Updated Pipedrive person {person_id} with form data")
+                    print(f"Response: {response.text[:200]}...")
+                    return True
+                else:
+                    print(f"Failed attempt {attempt+1} with status code {response.status_code}")
+                    print(f"Response: {response.text[:200]}")
+                    time.sleep(1)  # המתן לפני ניסיון נוסף
+            except Exception as e:
+                print(f"Exception in attempt {attempt+1}: {str(e)}")
+                time.sleep(1)
+        
+        print(f"ERROR: Failed to update person in Pipedrive after 3 attempts")
+        return False
+        
+    except Exception as e:
+        print(f"ERROR in update_pipedrive_person: {str(e)}")
+        print(traceback.format_exc())
+        return False
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
