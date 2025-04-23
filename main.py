@@ -390,6 +390,74 @@ async def get_jotform_submission(submission_id):
         print(traceback.format_exc())
         return None
 
+async def update_pipedrive_fields(person_id, form_data):
+    """עדכון שדות של כרטיס לקוח בפייפדרייב על סמך תשובות מג'וטפורם"""
+    try:
+        print(f"\n========= ATTEMPTING TO UPDATE PIPEDRIVE FIELDS ==========")
+        print(f"Person ID: {person_id}")
+        
+        # מיפוי בין שדות ג'וטפורם לשדות פייפדרייב
+        # מפתח: שדה ג'וטפורם, ערך: מזהה שדה פייפדרייב
+        field_mapping = {
+            "input18": "aef7138242c2a32ca51ec09c35df1bfa4c756f2c"
+            # הוסף כאן מיפויים נוספים
+        }
+        
+        # הדפסת נתוני השדות הרלוונטיים שיש לנו בנתונים
+        for jotform_field in field_mapping.keys():
+            if jotform_field in form_data:
+                print(f"Found field {jotform_field} in form data with value: {form_data[jotform_field]}")
+            else:
+                print(f"Field {jotform_field} not found in form data")
+        
+        # בדיקה אם יש שדות לעדכון
+        fields_to_update = {}
+        for jotform_field, pipedrive_field in field_mapping.items():
+            if jotform_field in form_data and form_data[jotform_field]:
+                # בדיקה שיש ערך בשדה ושהוא לא ריק
+                fields_to_update[pipedrive_field] = form_data[jotform_field]
+        
+        print(f"Fields to update: {fields_to_update}")
+        
+        if not fields_to_update:
+            print("No fields to update in Pipedrive")
+            return True  # מחזירים הצלחה כי אין שגיאה, פשוט אין מה לעדכן
+        
+        # עדכון השדות בפייפדרייב
+        api_url = f"https://api.pipedrive.com/v1/persons/{person_id}?api_token={PIPEDRIVE_API_KEY}"
+        print(f"Sending PUT request to {api_url}")
+        print(f"With data: {json.dumps(fields_to_update)}")
+        
+        # ניסיון עם ריטריי לעדכן את השדות
+        for attempt in range(3):
+            try:
+                response = requests.put(api_url, json=fields_to_update, timeout=10)
+                
+                print(f"Attempt {attempt+1} response status: {response.status_code}")
+                print(f"Response content: {response.text[:200]}")
+                
+                if response.status_code == 200:
+                    response_data = response.json()
+                    if response_data.get("success"):
+                        print(f"Successfully updated {len(fields_to_update)} fields for person {person_id}")
+                        return True
+                
+                print(f"Failed to update fields in Pipedrive. Status code: {response.status_code}")
+                
+            except requests.exceptions.RequestException as e:
+                print(f"Request error when updating Pipedrive fields: {e}")
+            
+            # המתנה לפני ניסיון נוסף
+            if attempt < 2:  # לא נמתין אחרי הניסיון האחרון
+                time.sleep(1)
+        
+        return False
+        
+    except Exception as e:
+        print(f"Error updating Pipedrive fields: {e}")
+        print(traceback.format_exc())
+        return False
+
 async def update_pipedrive_person(person_id, form_data):
     """יצירת פתק עם תשובות השאלון והצמדתו לכרטיס הלקוח בפייפדרייב"""
     try:
@@ -572,6 +640,13 @@ async def update_pipedrive_person(person_id, form_data):
                 if response.status_code == 200 or response.status_code == 201:
                     print(f"SUCCESS: Created note for Pipedrive person {person_id} with form data")
                     print(f"Response: {response.text[:200]}...")
+        
+                    # עדכון שדות פייפדרייב (אם יש צורך)
+                    # קריאה לפונקציה החדשה לעדכון שדות
+                    fields_result = await update_pipedrive_fields(person_id, form_data)
+                    if not fields_result:
+                        print("Warning: Fields were not updated in Pipedrive, but note was created successfully")
+        
                     return True
                 else:
                     print(f"Failed attempt {attempt+1} with status code {response.status_code}")
