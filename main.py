@@ -449,7 +449,8 @@ async def update_pipedrive_fields(person_id, form_data):
                         from dateutil import parser
                         
                         # ניסיון לפרש את התאריך באמצעות parser גמיש
-                        parsed_date = parser.parse(form_data[jotform_field], dayfirst=True)
+                        # הפעם עם dayfirst=False כדי שהחודש יהיה לפני היום
+                        parsed_date = parser.parse(form_data[jotform_field], dayfirst=False)
                         
                         # המרה לפורמט YYYY-MM-DD שפייפדרייב מצפה לו
                         formatted_date = parsed_date.strftime("%Y-%m-%d")
