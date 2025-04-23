@@ -536,7 +536,7 @@ async def update_pipedrive_person(person_id, form_data):
         
         # הוספת סיכום
         if items_added > 0:
-            note_content += f"\n\nסה"כ {items_added} שדות מידע נאספו בשאלון."
+            note_content += f"\n\nסהכ: {items_added} שדות מידע נאספו בשאלון."
         
         note_payload = {
             "content": note_content,
