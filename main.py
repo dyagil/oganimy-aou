@@ -246,49 +246,49 @@ async def clear_history():
 
 @app.post("/jotform-webhook")
 async def handle_jotform_webhook(request: Request):
-    """נקודת קצה לקבלת התראות מ-JotForm ואחזור התשובות דרך API"""
+    """טיפול באירועים מהווק של ג'וטפורם"""
     try:
-        # קבלת מידע מ-JotForm כ-form data
+        # קבלת הנתונים מהבקשה
         form_data = await request.form()
-        print("================ JOTFORM WEBHOOK REQUEST =================")
-        print(f"JotForm data received with keys: {', '.join(form_data.keys())}")
         
-        # בדיקת המידע שמתקבל מ-JotForm
-        if not form_data:
-            return {"status": "error", "message": "No data received from JotForm"}
+        # המרת נתוני הטופס למילון
+        webhook_data = dict(form_data)
+        print(f"Received JotForm webhook with {len(webhook_data)} fields")   
+        
+        # קבלת מזהה הגשת הטופס
+        if 'submission_id' not in webhook_data:
+            print("submission_id not found in webhook data")
+            return {"success": False, "error": "Missing submission_id"}
             
-        # מידע ההגשה
-        submission_id = form_data.get("submissionID")
+        submission_id = webhook_data.get('submission_id')
+        print(f"Processing submission ID: {submission_id}")
         
-        if not submission_id:
-            return {"status": "error", "message": "Submission ID not found in webhook data"}
+        # בדיקה שיש מזהה לקוח בפייפדרייב בנתונים
+        if 'typeA9' not in webhook_data:
+            print("Person ID (typeA9) not found in webhook data")
+            return {"success": False, "error": "Missing person_id"}
             
-        print(f"Received webhook for submission ID: {submission_id}")
+        person_id = webhook_data.get('typeA9')
+        print(f"Found person_id: {person_id}")
         
-        # שליפת מידע מלא על ההגשה דרך ה-API של JotForm
+        # קבלת נתוני הגשת הטופס ממני ה-API של ג'וטפורם
         submission_data = await get_jotform_submission(submission_id)
-        
         if not submission_data:
-            return {"status": "error", "message": "Failed to retrieve submission data"}
-            
-        # חילוץ מזהה הלקוח מהנתונים
-        client_id = None
-        if "typeA9" in submission_data and submission_data["typeA9"]:
-            client_id = submission_data["typeA9"]
-            print(f"Found client ID: {client_id}")
-        else:
-            print("Client ID not found in form data. Checking all fields:")
-            for field, value in submission_data.items():
-                print(f"Field: {field}, Value: {value}")
-            return {"status": "error", "message": "Client ID not found in submission data"}
-            
-        # עדכון כרטיס הלקוח בפייפדרייב
-        success = await update_pipedrive_person(client_id, submission_data)
+            print("Failed to fetch submission data")
+            return {"success": False, "error": "Failed to fetch submission data"}
         
-        if success:
-            return {"status": "success", "message": "Person updated in Pipedrive"}
+        # לוג של כל השדות שהתקבלו מג'וטפורם (לצורך דיבאג ומיפוי)
+        for field_key in submission_data.keys():
+            if not field_key.startswith('_'):
+                print(f"Submission field: {field_key} = {submission_data[field_key]}")
+            
+        # עדכון הפתק בפייפדרייב עם תשובות השאלון
+        result = await update_pipedrive_person(person_id, submission_data)
+        
+        if result:
+            return {"status": "success", "message": "Note created and fields updated successfully"}
         else:
-            return {"status": "error", "message": "Failed to update person in Pipedrive"}
+            return {"status": "error", "message": "Failed to process submission data"}
             
     except Exception as e:
         print(f"ERROR in JotForm webhook handler: {str(e)}")
@@ -376,6 +376,56 @@ async def get_jotform_submission(submission_id):
         print(f"ERROR in get_jotform_submission: {str(e)}")
         print(traceback.format_exc())
         return None
+
+async def update_pipedrive_fields(person_id, form_data):
+    """עדכון שדות של כרטיס לקוח בפייפדרייב על סמך תשובות מג'וטפורם"""
+    try:
+        # מיפוי בין שדות ג'וטפורם לשדות פייפדרייב
+        # מפתח: שדה ג'וטפורם, ערך: מזהה שדה פייפדרייב
+        field_mapping = {
+            "input18": "aef7138242c2a32ca51ec09c35df1bfa4c756f2c"
+            # הוסף כאן מיפויים נוספים
+        }
+        
+        # בדיקה אם יש שדות לעדכון
+        fields_to_update = {}
+        for jotform_field, pipedrive_field in field_mapping.items():
+            if jotform_field in form_data and form_data[jotform_field]:
+                # בדיקה שיש ערך בשדה ושהוא לא ריק
+                fields_to_update[pipedrive_field] = form_data[jotform_field]
+        
+        if not fields_to_update:
+            print("No fields to update in Pipedrive")
+            return
+        
+        # עדכון השדות בפייפדרייב
+        api_url = f"https://api.pipedrive.com/v1/persons/{person_id}?api_token={PIPEDRIVE_API_KEY}"
+        
+        # ניסיון עם ריטריי לעדכן את השדות
+        for attempt in range(3):
+            try:
+                response = requests.put(api_url, json=fields_to_update, timeout=10)
+                
+                if response.status_code == 200:
+                    response_data = response.json()
+                    if response_data.get("success"):
+                        print(f"Successfully updated {len(fields_to_update)} fields for person {person_id}")
+                        return True
+                
+                print(f"Failed to update fields in Pipedrive. Status code: {response.status_code}. Response: {response.text}")
+                
+            except requests.exceptions.RequestException as e:
+                print(f"Request error when updating Pipedrive fields: {e}")
+            
+            # המתנה לפני ניסיון נוסף
+            if attempt < 2:  # לא נמתין אחרי הניסיון האחרון
+                await asyncio.sleep(1)
+        
+        return False
+        
+    except Exception as e:
+        print(f"Error updating Pipedrive fields: {e}")
+        return False
 
 async def update_pipedrive_person(person_id, form_data):
     """יצירת פתק עם תשובות השאלון והצמדתו לכרטיס הלקוח בפייפדרייב"""
@@ -544,6 +594,10 @@ async def update_pipedrive_person(person_id, form_data):
             "person_id": person_id,
             "pinned_to_person_flag": True
         }
+        
+        # עדכון שדות פייפדרייב
+        # נקרא לפונקציה החדשה לעדכון שדות
+        await update_pipedrive_fields(person_id, form_data)
         
         # ה-API ליצירת פתקים בפייפדרייב
         notes_api_url = f"https://api.pipedrive.com/v1/notes?api_token={PIPEDRIVE_API_KEY}"
