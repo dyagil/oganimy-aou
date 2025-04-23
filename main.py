@@ -18,6 +18,7 @@ app = FastAPI()
 JOTFORM_URL = "https://form.jotform.com/202432710986455"
 PIPEDRIVE_API_KEY = os.getenv("PIPEDRIVE_API_KEY", "TO_BE_REPLACED")  # יוחלף ב-Railway כ-ENV
 BITLY_ACCESS_TOKEN = os.getenv("BITLY_ACCESS_TOKEN", "b77d50a5804d68a3762d38bad84749be9b1b0fc2")
+JOTFORM_API_KEY = os.getenv("JOTFORM_API_KEY", "TO_BE_REPLACED")  # יש להוסיף מפתח API של JotForm
 
 # שמירת מזהה עבור משימות שכבר נוצרו כדי למנוע כפילויות
 task_history = {}
@@ -245,9 +246,9 @@ async def clear_history():
 
 @app.post("/jotform-webhook")
 async def handle_jotform_webhook(request: Request):
-    """נקודת קצה לקבלת מידע מטופס JotForm ועדכון כרטיס הלקוח בפייפדרייב"""
+    """נקודת קצה לקבלת התראות מ-JotForm ואחזור התשובות דרך API"""
     try:
-        # המידע מ-JotForm מגיע בפורמט אחר מאשר JSON
+        # קבלת מידע מ-JotForm כ-form data
         form_data = await request.form()
         print("================ JOTFORM WEBHOOK REQUEST =================")
         print(f"JotForm data received with keys: {', '.join(form_data.keys())}")
@@ -255,27 +256,34 @@ async def handle_jotform_webhook(request: Request):
         # בדיקת המידע שמתקבל מ-JotForm
         if not form_data:
             return {"status": "error", "message": "No data received from JotForm"}
+            
+        # מידע ההגשה
+        submission_id = form_data.get("submissionID")
         
-        # ניסיון לחלץ את מזהה הלקוח מפייפדרייב (שהועבר בשדה typeA9)
+        if not submission_id:
+            return {"status": "error", "message": "Submission ID not found in webhook data"}
+            
+        print(f"Received webhook for submission ID: {submission_id}")
+        
+        # שליפת מידע מלא על ההגשה דרך ה-API של JotForm
+        submission_data = await get_jotform_submission(submission_id)
+        
+        if not submission_data:
+            return {"status": "error", "message": "Failed to retrieve submission data"}
+            
+        # חילוץ מזהה הלקוח מהנתונים
         client_id = None
-        if "typeA9" in form_data:
-            client_id = form_data.get("typeA9")
+        if "typeA9" in submission_data and submission_data["typeA9"]:
+            client_id = submission_data["typeA9"]
             print(f"Found client ID: {client_id}")
         else:
-            # אם אין מידע על מזהה הלקוח, לא ניתן לעדכן את כרטיס הלקוח
-            return {"status": "error", "message": "Client ID not found in form data"}
-        
-        # איסוף מידע מהטופס - תלוי בהגדרות השדות בטופס שלך
-        form_submission = {}
-        for key, value in form_data.items():
-            # מסנן שדות מערכת, לוקח רק שדות שמתחילים באות ולא בסמל
-            if key.startswith(('q', 'Q')) and not key.startswith('_'):
-                form_submission[key] = value
-        
-        print(f"Extracted form fields: {form_submission}")
-        
+            print("Client ID not found in form data. Checking all fields:")
+            for field, value in submission_data.items():
+                print(f"Field: {field}, Value: {value}")
+            return {"status": "error", "message": "Client ID not found in submission data"}
+            
         # עדכון כרטיס הלקוח בפייפדרייב
-        success = await update_pipedrive_person(client_id, form_submission)
+        success = await update_pipedrive_person(client_id, submission_data)
         
         if success:
             return {"status": "success", "message": "Person updated in Pipedrive"}
@@ -286,6 +294,59 @@ async def handle_jotform_webhook(request: Request):
         print(f"ERROR in JotForm webhook handler: {str(e)}")
         print(traceback.format_exc())
         return {"status": "error", "message": f"Internal error: {str(e)}"}
+
+async def get_jotform_submission(submission_id):
+    """קבלת נתוני הגשה שלמים מ-JotForm API"""
+    try:
+        # API לקבלת נתוני טופס
+        api_url = f"https://api.jotform.com/submission/{submission_id}?apiKey={JOTFORM_API_KEY}"
+        print(f"Fetching submission data from: {api_url}")
+        
+        # ניסיון עם מספר ניסיונות חוזרים
+        for attempt in range(3):
+            try:
+                response = requests.get(api_url, timeout=10)
+                
+                if response.status_code == 200:
+                    submission_json = response.json()
+                    if submission_json.get("responseCode") == 200 and "content" in submission_json:
+                        # הפיכת התשובה למבנה נוח יותר
+                        answers = submission_json["content"].get("answers", {})
+                        result = {}
+                        
+                        # עיבוד התשובות לפורמט נוח
+                        for question_id, answer_data in answers.items():
+                            # ניסיון לקבל שם שדה משמעותי
+                            field_name = answer_data.get("name", question_id)
+                            
+                            # ניסיון לחלץ את הערך
+                            if "answer" in answer_data:
+                                result[field_name] = answer_data["answer"]
+                            elif "text" in answer_data:
+                                result[field_name] = answer_data["text"]
+                        
+                        print(f"Processed submission with {len(result)} fields")
+                        return result
+                        
+                    else:
+                        print(f"Invalid response format from JotForm API: {submission_json}")
+                else:
+                    print(f"Failed attempt {attempt+1} with status code {response.status_code}")
+                    print(f"Response: {response.text[:200]}")
+                    
+                time.sleep(1)  # המתן לפני ניסיון נוסף
+                    
+            except Exception as e:
+                print(f"Exception in attempt {attempt+1}: {str(e)}")
+                time.sleep(1)
+        
+        print("Failed to retrieve submission data after 3 attempts")
+        return None
+        
+    except Exception as e:
+        print(f"ERROR in get_jotform_submission: {str(e)}")
+        print(traceback.format_exc())
+        return None
 
 async def update_pipedrive_person(person_id, form_data):
     """יצירת פתק עם תשובות השאלון והצמדתו לכרטיס הלקוח בפייפדרייב"""
