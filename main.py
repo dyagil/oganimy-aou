@@ -382,7 +382,7 @@ async def update_pipedrive_person(person_id, form_data):
     try:
         # יצירת תוכן הפתק מכל התשובות בשאלון
         current_date = datetime.now().strftime("%d/%m/%Y %H:%M")
-        note_content = f"**תשובות משאלון JotForm - {current_date}**\n\n"
+        note_content = f"# תשובות שאלון {current_date}\n\n"
         
         # קבלת המידע על כותרות השדות
         field_labels = {}
@@ -390,13 +390,38 @@ async def update_pipedrive_person(person_id, form_data):
             field_labels = form_data["_metadata"]["field_labels"]
         
         # רשימת שדות להתעלם מהם לחלוטין
-        ignored_fields = ["typeA9", "typeA8", "date", "ip", "date124", "form_name"]
+        ignored_fields = [
+            "typeA9", "typeA8", "date", "ip", "date124", "form_name", 
+            "submission_id", "control_text", "control_text_2", "control_6", "control_1",
+            "website", "submit", "submission_id", "view", "anchor1", "anchor2", "anchor3", "anchor4"
+        ]
+        
+        # מראה השדות שלא רוצים להציג
+        ignored_texts = [
+            "\u05e2וגנים", "anchor", "\u05d0\u05e0\u05db\u05d5\u05e8", 
+            "\u05eaוד\u05d4 \u05e9מ\u05d9\u05dc\u05d0\u05ea", 
+            "\u05d0\u05d9\u05e9\u05d5\u05e8\u05d9", "\u05d4\u05e2\u05e8\u05d5\u05ea", 
+            "\u05d4\u05d5\u05e8\u05d0\u05d5\u05ea"
+        ]
         
         # ערכים שיחשבו כריקים
-        empty_values = ["", "null", "undefined", None, "0", "-"]
+        empty_values = ["", "null", "undefined", None, "0", "-", "N/A", "n/a", "לא"]
         
-        # הוספת התשובות הלא ריקות לפתק
+        # מיון שדות לקטגוריות
+        categories = {
+            "\u05e4\u05e8\u05d8\u05d9\u05dd \u05d0\u05d9\u05e9\u05d9\u05d9\u05dd": [],  # פרטים אישיים
+            "\u05d4\u05ea\u05e2\u05e0\u05d9\u05d9\u05e0\u05d5\u05ea": [],              # התעניינות
+            "\u05ea\u05e9\u05d5\u05d1\u05d5\u05ea \u05e0\u05d5\u05e1\u05e4\u05d5\u05ea": []  # תשובות נוספות
+        }
+        
+        # שדות שיופיעו בקטגוריה פרטים אישיים
+        personal_fields = ['name', 'Lname', 'phone', 'email', 'typeA7', 'typeA10']
+        # שדות שיופיעו בקטגוריה התעניינות
+        interests_fields = ['typeA23', 'typeA11', 'typeA24', 'typeA48']
+        
+        # עיבוד השדות לקטגוריות
         items_added = 0
+        
         for field_name, field_value in form_data.items():
             # התעלם משדות להתעלמות, שדות מערכת ושדות ריקים
             if (field_name not in ignored_fields and 
@@ -420,17 +445,45 @@ async def update_pipedrive_person(person_id, form_data):
                     elif field_name.startswith("typeA"):
                         field_label = "שדה " + field_name.replace("typeA", "")
                 
-                # הוספת השדה המלא לפתק
-                note_content += f"**{field_label}**: {field_value}\n"
+                # בדיקה אם השדה או הערך מכיל טקסט שרוצים להתעלם ממנו
+                should_ignore = False
+                for ignored_text in ignored_texts:
+                    if (ignored_text.lower() in str(field_label).lower() or 
+                        ignored_text.lower() in str(field_value).lower()):
+                        should_ignore = True
+                        break
+                
+                if should_ignore:
+                    continue
+                
+                # הכנת הערך המעוצב לתצוגה  
+                formatted_field = f"**{field_label}**: {field_value}"
+                
+                # הוספה לקטגוריה המתאימה
+                if field_name in personal_fields or any(name in field_name for name in ['name', 'phone', 'mail']):
+                    categories["פרטים אישיים"].append(formatted_field)
+                elif field_name in interests_fields or any(name in field_label.lower() for name in ['עניין', 'מעוניין', 'מתעניין', 'רוצה']):
+                    categories["\u05d4\u05ea\u05e2\u05e0\u05d9\u05d9\u05e0\u05d5\u05ea"].append(formatted_field)
+                else:
+                    categories["\u05ea\u05e9\u05d5\u05d1\u05d5\u05ea \u05e0\u05d5\u05e1\u05e4\u05d5\u05ea"].append(formatted_field)
+                
                 items_added += 1
         
-        print(f"Prepared note content with {items_added} non-empty fields out of {len(form_data)} total fields")
+        # הוספת הקטגוריות לתוכן הפתק
+        for category, fields in categories.items():
+            if fields:  # רק אם יש שדות בקטגוריה
+                note_content += f"## {category}\n\n"
+                for field in fields:
+                    note_content += f"{field}\n\n"
+                note_content += "---\n\n"  # מפריד בין קטגוריות
+        
+        print(f"Prepared note content with {items_added} non-empty fields organized into categories")
         
         # יצירת הפתק בפייפדרייב
         note_payload = {
             "content": note_content,
             "person_id": person_id,
-            "pinned_to_person_flag": 1  # נעיצת הפתק לכרטיס הלקוח
+            "pinned_to_person_flag": True
         }
         
         # ה-API ליצירת פתקים בפייפדרייב
