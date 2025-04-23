@@ -288,50 +288,45 @@ async def handle_jotform_webhook(request: Request):
         return {"status": "error", "message": f"Internal error: {str(e)}"}
 
 async def update_pipedrive_person(person_id, form_data):
-    """עדכון פרטי לקוח בפייפדרייב עם נתונים מהטופס"""
+    """יצירת פתק עם תשובות השאלון והצמדתו לכרטיס הלקוח בפייפדרייב"""
     try:
-        # בונה את הנתונים לעדכון. כאן יש להתאים את השדות לפי הצורך
-        update_data = {
-            "6cbed5fa23ac3ad0962763e941cb057a63a84a23": "" # לדוגמה: שדה מותאם אישית בפייפדרייב
+        # יצירת תוכן הפתק מכל התשובות בשאלון
+        current_date = datetime.now().strftime("%d/%m/%Y %H:%M")
+        note_content = f"**תשובות משאלון JotForm - {current_date}**\n\n"
+        
+        # הוספת כל התשובות לפתק
+        for field_name, field_value in form_data.items():
+            # התעלם משדות מערכת וממזהה הלקוח
+            if field_name != "typeA9" and not field_name.startswith("_"):
+                # ניסיון להשיג כותרת שדה אם קיימת
+                field_label = field_name
+                if "_" in field_name:
+                    field_label = field_name.split("_")[-1]
+                
+                note_content += f"**{field_label}**: {field_value}\n"
+        
+        print(f"Prepared note content from form data with {len(form_data)} fields")
+        
+        # יצירת הפתק בפייפדרייב
+        note_payload = {
+            "content": note_content,
+            "person_id": person_id,
+            "pinned_to_person_flag": 1  # נעיצת הפתק לכרטיס הלקוח
         }
         
-        # מיפוי שדות JotForm לשדות מותאמים אישית בפייפדרייב
-        field_mapping = {
-            # שדה ב-JotForm: מזהה שדה מותאם אישית בפייפדרייב
-            "q3_input3": "6cbed5fa23ac3ad0962763e941cb057a63a84a23",  # דוגמא - יש להחליף במזהים אמיתיים
-            "q4_input4": "57b60e08146e63d0e66c4de9c8f46de9ae0bb2e0"
-        }
-        
-        # העברת הנתונים מהטופס לשדות המתאימים בפייפדרייב
-        for jotform_field, value in form_data.items():
-            if jotform_field in field_mapping:
-                pipedrive_field = field_mapping[jotform_field]
-                update_data[pipedrive_field] = value
-                print(f"Mapping field {jotform_field} to {pipedrive_field} with value: {value}")
-        
-        # בניית האובייקט לעדכון
-        payload = {
-            # שדות רגילים שאולי תרצה לעדכן
-            # "name": form_data.get("name", ""),
-            
-            # שדות מותאמים אישית
-            "custom_fields": update_data
-        }
-        
-        # העדכון עצמו של הלקוח בפייפדרייב
-        api_url = f"https://api.pipedrive.com/v1/persons/{person_id}?api_token={PIPEDRIVE_API_KEY}"
+        # ה-API ליצירת פתקים בפייפדרייב
+        notes_api_url = f"https://api.pipedrive.com/v1/notes?api_token={PIPEDRIVE_API_KEY}"
         
         # ניסיון עם מספר ניסיונות חוזרים
         for attempt in range(3):
             try:
-                print(f"Attempt {attempt+1}: Updating person data in Pipedrive for ID: {person_id}")
-                print(f"Payload: {json.dumps(payload)}")
+                print(f"Attempt {attempt+1}: Creating note in Pipedrive for person ID: {person_id}")
                 
-                # שימוש ב-PUT לעדכון המידע
-                response = requests.put(api_url, json=payload, timeout=10)
+                # שימוש ב-POST ליצירת פתק חדש
+                response = requests.post(notes_api_url, json=note_payload, timeout=10)
                 
-                if response.status_code == 200:
-                    print(f"SUCCESS: Updated Pipedrive person {person_id} with form data")
+                if response.status_code == 200 or response.status_code == 201:
+                    print(f"SUCCESS: Created note for Pipedrive person {person_id} with form data")
                     print(f"Response: {response.text[:200]}...")
                     return True
                 else:
@@ -342,7 +337,7 @@ async def update_pipedrive_person(person_id, form_data):
                 print(f"Exception in attempt {attempt+1}: {str(e)}")
                 time.sleep(1)
         
-        print(f"ERROR: Failed to update person in Pipedrive after 3 attempts")
+        print(f"ERROR: Failed to create note in Pipedrive after 3 attempts")
         return False
         
     except Exception as e:
