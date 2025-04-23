@@ -8,6 +8,7 @@ import traceback
 import hashlib
 import urllib.parse
 from datetime import datetime, timedelta
+from dateutil import parser
 from dotenv import load_dotenv
 
 # טען משתני סביבה מקובץ .env (אם קיים)
@@ -439,69 +440,36 @@ async def update_pipedrive_fields(person_id, form_data):
                 # בדיקה שיש ערך בשדה ושהוא לא ריק
                 
                 # טיפול מיוחד בשדה תאריך לידה
-                if jotform_field == "input117":
+                if jotform_field == "input117" and form_data[jotform_field]:
                     try:
                         # הדפסת הערך המקורי לצורך דיבוג
                         original_date = form_data[jotform_field]
                         print(f"Original date value from JotForm: {original_date}")
                         
-                        # בדיקה שהערך לא ריק
-                        if not original_date:
-                            print("Date value is empty, skipping date parsing")
-                            continue
-                        
-                        import datetime
-                        import re
-                        
                         # הסרת רווחים ותווים שאינם חלק מהתאריך
                         cleaned_date = original_date.strip()
                         print(f"Cleaned date: {cleaned_date}")
                         
-                        # בדיקת פורמטים שונים
-                        formatted_date = None
-                        
-                        # ניסיון 1: פורמט MM/DD/YYYY או M/D/YYYY (כמו אמריקאי)
-                        us_pattern = re.compile(r'^(\d{1,2})\/(\d{1,2})\/(\d{4})$')
-                        match = us_pattern.match(cleaned_date)
-                        if match:
-                            month, day, year = match.groups()
-                            formatted_date = f"{year}-{int(month):02d}-{int(day):02d}"
-                            print(f"Matched US format MM/DD/YYYY: {formatted_date}")
-                        
-                        # ניסיון 2: פורמט DD/MM/YYYY או D/M/YYYY (כמו אירופאי)
-                        if not formatted_date:
-                            eu_pattern = re.compile(r'^(\d{1,2})\/(\d{1,2})\/(\d{4})$')
-                            match = eu_pattern.match(cleaned_date)
-                            if match:
-                                day, month, year = match.groups()
-                                formatted_date = f"{year}-{int(month):02d}-{int(day):02d}"
-                                print(f"Matched EU format DD/MM/YYYY: {formatted_date}")
-                        
-                        # ניסיון 3: פורמט מילולי כמו "January 1, 2023"
-                        if not formatted_date:
+                        # ננסה להשתמש ב-dateutil parser שהוא הכי גמיש
+                        try:
+                            # ניסיון עם פורמט אמריקאי (MM/DD/YYYY)
+                            parsed_date = parser.parse(cleaned_date, dayfirst=False)
+                            formatted_date = parsed_date.strftime("%Y-%m-%d")
+                            print(f"Parsed date as MM/DD/YYYY: {formatted_date}")
+                        except Exception:
                             try:
-                                from dateutil import parser
-                                parsed_date = parser.parse(cleaned_date, fuzzy=True)
+                                # ניסיון עם פורמט אירופאי (DD/MM/YYYY)
+                                parsed_date = parser.parse(cleaned_date, dayfirst=True)
                                 formatted_date = parsed_date.strftime("%Y-%m-%d")
-                                print(f"Parsed with dateutil: {formatted_date}")
-                            except Exception as parse_error:
-                                print(f"dateutil parser failed: {parse_error}")
+                                print(f"Parsed date as DD/MM/YYYY: {formatted_date}")
+                            except Exception as e:
+                                print(f"Failed to parse date: {e}")
+                                # אם כל הניסיונות נכשלו, נשתמש בערך המקורי
+                                formatted_date = original_date
                         
-                        # ניסיון 4: בדיקה אם התאריך כבר בפורמט ISO כמו YYYY-MM-DD
-                        if not formatted_date:
-                            iso_pattern = re.compile(r'^(\d{4})-(\d{1,2})-(\d{1,2})$')
-                            match = iso_pattern.match(cleaned_date)
-                            if match:
-                                formatted_date = cleaned_date
-                                print(f"Already in ISO format: {formatted_date}")
-                        
-                        # בדיקה שהתאריך הומר בהצלחה
-                        if formatted_date:
-                            print(f"Final formatted date for Pipedrive: {formatted_date}")
-                            fields_to_update[pipedrive_field] = formatted_date
-                        else:
-                            print(f"Could not parse date '{original_date}', using original value")
-                            fields_to_update[pipedrive_field] = original_date
+                        # עדכון השדה בפייפדרייב
+                        fields_to_update[pipedrive_field] = formatted_date
+                        print(f"Final date format for Pipedrive: {formatted_date}")
                     
                     except Exception as e:
                         print(f"Error in date processing: {e}")
