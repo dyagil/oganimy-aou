@@ -393,26 +393,35 @@ async def update_pipedrive_person(person_id, form_data):
         ignored_fields = [
             "typeA9", "typeA8", "date", "ip", "date124", "form_name", 
             "submission_id", "control_text", "control_text_2", "control_6", "control_1",
-            "website", "submit", "submission_id", "view", "anchor1", "anchor2", "anchor3", "anchor4"
+            "website", "submit", "submission_id", "view", "anchor1", "anchor2", "anchor3", "anchor4",
+            "submit_form", "preferred_time", "signature", "form_title", "form_id"
         ]
         
-        # מראה השדות שלא רוצים להציג
+        # מילות מפתח לשדות שלא רוצים להציג
         ignored_texts = [
-            "\u05e2וגנים", "anchor", "\u05d0\u05e0\u05db\u05d5\u05e8", 
-            "\u05eaוד\u05d4 \u05e9מ\u05d9\u05dc\u05d0\u05ea", 
-            "\u05d0\u05d9\u05e9\u05d5\u05e8\u05d9", "\u05d4\u05e2\u05e8\u05d5\u05ea", 
-            "\u05d4\u05d5\u05e8\u05d0\u05d5\u05ea"
+            "עוגנים", "anchor", "אנכור", 
+            "תודה שמילאת", 
+            "אישורי", "הערות", 
+            "הוראות", "חתימה"
         ]
         
         # ערכים שיחשבו כריקים
-        empty_values = ["", "null", "undefined", None, "0", "-", "N/A", "n/a", "לא"]
+        empty_values = ["", "null", "undefined", None, "0", "-", "N/A", "n/a", "לא", 
+                       "תאריך", "מיקוד", "תעודת", "חתימה"]
         
         # מיון שדות לקטגוריות
         categories = {
-            "\u05e4\u05e8\u05d8\u05d9\u05dd \u05d0\u05d9\u05e9\u05d9\u05d9\u05dd": [],  # פרטים אישיים
-            "\u05d4\u05ea\u05e2\u05e0\u05d9\u05d9\u05e0\u05d5\u05ea": [],              # התעניינות
-            "\u05ea\u05e9\u05d5\u05d1\u05d5\u05ea \u05e0\u05d5\u05e1\u05e4\u05d5\u05ea": []  # תשובות נוספות
+            "פרטים אישיים": [],  # פרטים אישיים
+            "התעניינות": [],              # התעניינות
+            "תשובות נוספות": []  # תשובות נוספות
         }
+        
+        # זיהוי שדות שהשם שלהם זהה לערך (כמו שאלות כן/לא בג'וטפורם)
+        def clean_value(value):
+            """ ניקוי הערך מתווים מיוחדים להשוואה """
+            if not value:
+                return ""
+            return str(value).lower().strip().replace("?", "").replace(":", "")
         
         # שדות שיופיעו בקטגוריה פרטים אישיים
         personal_fields = ['name', 'Lname', 'phone', 'email', 'typeA7', 'typeA10']
@@ -453,21 +462,62 @@ async def update_pipedrive_person(person_id, form_data):
                         should_ignore = True
                         break
                 
+                # בדיקה אם כותרת השדה והערך שלו זהים או דומים מאד (כמו בשאלות כן/לא של ג'וטפורם)
+                clean_label = clean_value(field_label)
+                clean_value_str = clean_value(field_value)
+                
+                if clean_label and clean_value_str and (clean_label == clean_value_str or 
+                   (len(clean_label) > 10 and clean_label in clean_value_str) or
+                   (len(clean_value_str) > 10 and clean_value_str in clean_label)):
+                    # אם הם זהים או מכילים אחד את השני - נשנה את הפורמט
+                    if clean_value_str == "כן" or clean_value_str == "yes" or clean_value_str == "true":
+                        # אם זו שאלת כן/לא שנענתה ב"\u05db\u05df" - נשאיר רק את כותרת השדה בלי הערך
+                        field_value = "✓"  # סימון של "\u05db\u05df"
+                    elif clean_value_str == "לא" or clean_value_str == "no" or clean_value_str == "false":
+                        field_value = "✗"  # סימון של "\u05dc\u05d0"
+                    else:
+                        # כותרת וערך זהים שאינם כן/לא - נשאיר רק את כותרת השדה
+                        field_value = "✓"  # נשתמש בסימון להראות שהלקוח בחר זאת
+                
                 if should_ignore:
                     continue
                 
-                # הכנת הערך המעוצב לתצוגה  
-                formatted_field = f"**{field_label}**: {field_value}"
+                # הכנת הערך המעוצב לתצוגה בצורה אסתטית יותר  
+                if field_value == "✓":
+                    # אם זו שאלת כן/לא או ערך זהה לשם השדה - נציג רק את שם השדה עם סימון ✓
+                    formatted_field = f"**{field_label}** ✓"
+                elif field_value == "✗":
+                    # אם זו שאלת כן/לא שסומנה כ'לא' - נציג את שם השדה עם סימון ✗
+                    formatted_field = f"**{field_label}** ✗"
+                else:
+                    # אחרת - נציג את שם השדה והערך
+                    formatted_field = f"**{field_label}**: {field_value}"
                 
                 # הוספה לקטגוריה המתאימה
                 if field_name in personal_fields or any(name in field_name for name in ['name', 'phone', 'mail']):
                     categories["פרטים אישיים"].append(formatted_field)
                 elif field_name in interests_fields or any(name in field_label.lower() for name in ['עניין', 'מעוניין', 'מתעניין', 'רוצה']):
-                    categories["\u05d4\u05ea\u05e2\u05e0\u05d9\u05d9\u05e0\u05d5\u05ea"].append(formatted_field)
+                    categories["התעניינות"].append(formatted_field)
                 else:
-                    categories["\u05ea\u05e9\u05d5\u05d1\u05d5\u05ea \u05e0\u05d5\u05e1\u05e4\u05d5\u05ea"].append(formatted_field)
+                    categories["תשובות נוספות"].append(formatted_field)
                 
                 items_added += 1
+        
+        # הסרת כפילויות בכל קטגוריה
+        for category in categories:
+            # יצירת מילון שיחליף רשימה וימנע כפילויות
+            unique_fields = {}
+            for field in categories[category]:
+                # חילוץ כותרת השדה (החלק בין הכוכביות)
+                field_parts = field.split("**")
+                if len(field_parts) >= 3:
+                    field_title = field_parts[1].strip()
+                    # אם כבר קיים שדה עם אותה כותרת, נחליף אותו רק אם החדש קצר יותר
+                    if field_title not in unique_fields or len(field) < len(unique_fields[field_title]):
+                        unique_fields[field_title] = field
+            
+            # החלפת הרשימה המקורית במילון ללא כפילויות
+            categories[category] = list(unique_fields.values())
         
         # הוספת הקטגוריות לתוכן הפתק
         for category, fields in categories.items():
@@ -480,6 +530,14 @@ async def update_pipedrive_person(person_id, form_data):
         print(f"Prepared note content with {items_added} non-empty fields organized into categories")
         
         # יצירת הפתק בפייפדרייב
+        # הסרת הסימון האחרון של מפריד בסוף הפתק
+        if note_content.endswith("---\n\n"):
+            note_content = note_content[:-5]
+        
+        # הוספת סיכום
+        if items_added > 0:
+            note_content += f"\n\nסה"כ {items_added} שדות מידע נאספו בשאלון."
+        
         note_payload = {
             "content": note_content,
             "person_id": person_id,
