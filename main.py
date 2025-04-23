@@ -380,7 +380,7 @@ async def get_jotform_submission(submission_id):
 async def update_pipedrive_person(person_id, form_data):
     """יצירת פתק עם תשובות השאלון והצמדתו לכרטיס הלקוח בפייפדרייב"""
     try:
-        # יצירת תוכן הפתק מכל התשובות בשאלון
+        # יצירת תוכן הפתק מכל התשובות בשאלון - עיצוב חדש
         current_date = datetime.now().strftime("%d/%m/%Y %H:%M")
         note_content = f"# תשובות שאלון {current_date}\n\n"
         
@@ -482,16 +482,16 @@ async def update_pipedrive_person(person_id, form_data):
                 if should_ignore:
                     continue
                 
-                # הכנת הערך המעוצב לתצוגה בצורה אסתטית יותר  
+                # הכנת הערך המעוצב לתצוגה בצורה אסתטית יותר - ללא כוכביות
                 if field_value == "✓":
                     # אם זו שאלת כן/לא או ערך זהה לשם השדה - נציג רק את שם השדה עם סימון ✓
-                    formatted_field = f"**{field_label}** ✓"
+                    formatted_field = f"○ {field_label} ✓"
                 elif field_value == "✗":
                     # אם זו שאלת כן/לא שסומנה כ'לא' - נציג את שם השדה עם סימון ✗
-                    formatted_field = f"**{field_label}** ✗"
+                    formatted_field = f"○ {field_label} ✗"
                 else:
                     # אחרת - נציג את שם השדה והערך
-                    formatted_field = f"**{field_label}**: {field_value}"
+                    formatted_field = f"○ {field_label}: {field_value}"
                 
                 # הוספה לקטגוריה המתאימה
                 if field_name in personal_fields or any(name in field_name for name in ['name', 'phone', 'mail']):
@@ -508,10 +508,11 @@ async def update_pipedrive_person(person_id, form_data):
             # יצירת מילון שיחליף רשימה וימנע כפילויות
             unique_fields = {}
             for field in categories[category]:
-                # חילוץ כותרת השדה (החלק בין הכוכביות)
-                field_parts = field.split("**")
-                if len(field_parts) >= 3:
-                    field_title = field_parts[1].strip()
+                # חילוץ כותרת השדה (החלק אחרי הסימון העגול)
+                field_parts = field.split("○ ")
+                if len(field_parts) >= 2:
+                    # אם יש תו ✓ או ✗ - הכותרת היא החלק שלפני התו
+                    field_title = field_parts[1].split(" ✓")[0].split(" ✗")[0].split(":")[0].strip()
                     # אם כבר קיים שדה עם אותה כותרת, נחליף אותו רק אם החדש קצר יותר
                     if field_title not in unique_fields or len(field) < len(unique_fields[field_title]):
                         unique_fields[field_title] = field
@@ -519,7 +520,7 @@ async def update_pipedrive_person(person_id, form_data):
             # החלפת הרשימה המקורית במילון ללא כפילויות
             categories[category] = list(unique_fields.values())
         
-        # הוספת הקטגוריות לתוכן הפתק
+        # הוספת הקטגוריות לתוכן הפתק עם עיצוב חדש
         for category, fields in categories.items():
             if fields:  # רק אם יש שדות בקטגוריה
                 note_content += f"## {category}\n\n"
