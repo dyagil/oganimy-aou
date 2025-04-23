@@ -6,6 +6,7 @@ import json
 import time
 import traceback
 import hashlib
+import urllib.parse
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -16,6 +17,7 @@ app = FastAPI()
 
 JOTFORM_URL = "https://form.jotform.com/202432710986455"
 PIPEDRIVE_API_KEY = os.getenv("PIPEDRIVE_API_KEY", "TO_BE_REPLACED")  # יוחלף ב-Railway כ-ENV
+BITLY_ACCESS_TOKEN = os.getenv("BITLY_ACCESS_TOKEN", "b77d50a5804d68a3762d38bad84749be9b1b0fc2")
 
 # שמירת מזהה עבור משימות שכבר נוצרו כדי למנוע כפילויות
 task_history = {}
@@ -92,8 +94,32 @@ def create_jotform_task(person_id, field_value):
         print(f"Extracted person details: {first_name} {last_name}, phone: {phone}, email: {email}, client_code: {client_code}")
         
         # יצירת קישור לטופס JotForm עם שמות פרמטרים נכונים
-        jotform_link = f"{JOTFORM_URL}?name={first_name}&Lname={last_name}&phone={phone}&email={email}&typeA9={client_code}"
-        print(f"Generated JotForm link: {jotform_link}")
+        jotform_link = f"{JOTFORM_URL}?name={urllib.parse.quote(first_name)}&Lname={urllib.parse.quote(last_name)}&phone={urllib.parse.quote(phone)}&email={urllib.parse.quote(email)}&typeA9={client_code}"
+        print(f"Original JotForm link: {jotform_link}")
+        
+        # קיצור הקישור באמצעות Bitly
+        try:
+            bitly_url = "https://api-ssl.bitly.com/v4/shorten"
+            payload = {
+                "long_url": jotform_link
+            }
+            headers = {
+                "Authorization": f"Bearer {BITLY_ACCESS_TOKEN}",
+                "Content-Type": "application/json"
+            }
+            
+            bitly_response = requests.post(bitly_url, json=payload, headers=headers, timeout=10)
+            
+            if bitly_response.status_code == 200 or bitly_response.status_code == 201:
+                shortened_url = bitly_response.json().get("link")
+                print(f"Shortened URL with Bitly: {shortened_url}")
+                jotform_link = shortened_url
+            else:
+                print(f"Failed to shorten URL with Bitly. Status code: {bitly_response.status_code}")
+                print(f"Response: {bitly_response.text[:200]}")
+        except Exception as e:
+            print(f"Error shortening URL with Bitly: {str(e)}")
+            # במקרה של שגיאה, נשתמש בקישור המקורי
         
         # הכנת המשימה
         task_payload = {
