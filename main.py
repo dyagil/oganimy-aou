@@ -313,19 +313,48 @@ async def get_jotform_submission(submission_id):
                         # הפיכת התשובה למבנה נוח יותר
                         answers = submission_json["content"].get("answers", {})
                         result = {}
+                        metadata = {}
+                        
+                        # שמירת המידע על כותרות השדות לשימוש בפתק
+                        metadata["field_labels"] = {}
                         
                         # עיבוד התשובות לפורמט נוח
                         for question_id, answer_data in answers.items():
-                            # ניסיון לקבל שם שדה משמעותי
+                            # שמירת שם השדה הטכני
                             field_name = answer_data.get("name", question_id)
                             
-                            # ניסיון לחלץ את הערך
+                            # ניסיון לקבל כותרת אמיתית של השדה
+                            field_label = None
+                            if "text" in answer_data and answer_data["text"]:
+                                field_label = answer_data["text"]
+                            elif "sublabels" in answer_data and answer_data["sublabels"]:
+                                field_label = next(iter(answer_data["sublabels"].values()), None)
+                            elif "label" in answer_data and answer_data["label"]:
+                                field_label = answer_data["label"]
+                            
+                            # שמירת כותרת השדה במטא-דאטה
+                            if field_label and field_label.strip():
+                                metadata["field_labels"][field_name] = field_label
+                            
+                            # שמירת התשובה עצמה
                             if "answer" in answer_data:
-                                result[field_name] = answer_data["answer"]
+                                # בדיקה אם התשובה היא JSON
+                                if isinstance(answer_data["answer"], dict):
+                                    # ניסיון לחלץ מבנה ידוע (full - שימושי למספרי טלפון)
+                                    if "full" in answer_data["answer"]:
+                                        result[field_name] = answer_data["answer"]["full"]
+                                    else:
+                                        # חיבור הערכים לשרשרת אחת
+                                        result[field_name] = ", ".join([str(v) for v in answer_data["answer"].values()])
+                                else:
+                                    result[field_name] = answer_data["answer"]
                             elif "text" in answer_data:
                                 result[field_name] = answer_data["text"]
                         
-                        print(f"Processed submission with {len(result)} fields")
+                        print(f"Processed submission with {len(result)} fields and {len(metadata['field_labels'])} field labels")
+                        
+                        # הוספת המטא-דאטה לתוצאה
+                        result["_metadata"] = metadata
                         return result
                         
                     else:
@@ -355,14 +384,30 @@ async def update_pipedrive_person(person_id, form_data):
         current_date = datetime.now().strftime("%d/%m/%Y %H:%M")
         note_content = f"**תשובות משאלון JotForm - {current_date}**\n\n"
         
+        # קבלת המידע על כותרות השדות
+        field_labels = {}
+        if "_metadata" in form_data and "field_labels" in form_data["_metadata"]:
+            field_labels = form_data["_metadata"]["field_labels"]
+        
         # הוספת כל התשובות לפתק
         for field_name, field_value in form_data.items():
             # התעלם משדות מערכת וממזהה הלקוח
             if field_name != "typeA9" and not field_name.startswith("_"):
                 # ניסיון להשיג כותרת שדה אם קיימת
-                field_label = field_name
-                if "_" in field_name:
-                    field_label = field_name.split("_")[-1]
+                if field_name in field_labels and field_labels[field_name].strip():
+                    # שימוש בכותרת השדה האמיתית מה-API
+                    field_label = field_labels[field_name]
+                else:
+                    # ניסיון להשיג כותרת משם השדה
+                    field_label = field_name
+                    if "_" in field_name:
+                        field_label = field_name.split("_")[-1]
+                    
+                    # טיפול בשדות מיוחדים
+                    if field_name.startswith("input"):
+                        field_label = "שאלה " + field_name.replace("input", "")
+                    elif field_name.startswith("typeA"):
+                        field_label = "שדה " + field_name.replace("typeA", "")
                 
                 note_content += f"**{field_label}**: {field_value}\n"
         
