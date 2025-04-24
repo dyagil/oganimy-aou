@@ -136,12 +136,14 @@ def create_jotform_task(person_id, field_value):
             print(f"Error shortening URL with Bitly: {str(e)}")
             # במקרה של שגיאה, נשתמש בקישור המקורי
         
-        # הכנת המשימה
+        # הכנת המשימה - עם פורמט מתאים למשימות פייפדרייב החדשות
         task_payload = {
-            "subject": "לחיצה על הקישור תוביל לשאלון תחומים",
-            "done": 0,
+            "subject": "שאלון תחומים ל" + client_name,
+            "type": "task",
+            "due_date": (datetime.now() + timedelta(days=3)).strftime('%Y-%m-%d'),
+            "due_time": "12:00",
             "person_id": person_id,
-            "note": f"היי! הנה הקישור שלך לטופס:\n{jotform_link}",
+            "public_description": f"אנא שלח ללקוח את הקישור לשאלון תחומים לצורך המשך הטיפול\n\nקישור לשאלון: {jotform_link}",
         }
         
         # יצירת משימה חדשה ב-Pipedrive
