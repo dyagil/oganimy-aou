@@ -21,6 +21,19 @@ PIPEDRIVE_API_KEY = os.getenv("PIPEDRIVE_API_KEY", "TO_BE_REPLACED")  # יוחל
 BITLY_ACCESS_TOKEN = os.getenv("BITLY_ACCESS_TOKEN", "b77d50a5804d68a3762d38bad84749be9b1b0fc2")
 JOTFORM_API_KEY = os.getenv("JOTFORM_API_KEY", "TO_BE_REPLACED")  # יש להוסיף מפתח API של JotForm
 
+# מיפוי בין סוגי עסקאות לשאלונים ספציפיים
+DEAL_TYPE_TO_FORM = {
+    "החזר מס": {
+        "form_id": "232235750003345",  # יש להחליף למזהה הנכון של שאלון המס
+        "form_name": "שאלון להחזר מס"
+    },
+    # ניתן להוסיף עוד סוגי עסקאות ושאלונים כאן
+}
+
+class ActivitiesManager:
+    def __init__(self):
+        pass
+
 # שמירת מזהה עבור משימות שכבר נוצרו כדי למנוע כפילויות
 task_history = {}
 
@@ -234,6 +247,156 @@ async def handle_webhook(request: Request, background_tasks: BackgroundTasks):
     else:
         print(f"Missing required data - person_id: {person_id}, field_value: {field_value}")
         return {"status": "ignored", "reason": "Missing required data"}
+
+# מנהל פעילויות
+activities_manager = ActivitiesManager()
+
+
+async def create_deal_form_activity(deal_id, deal_data):
+    """
+    יצירת פעילות בפייפדרייב עם קישור לשאלון מתאים בהתאם לסוג העסקה
+    """
+    try:
+        # בדיקה אם יש לנו מיפוי לסוג העסקה הזו
+        pipeline_id = deal_data.get("pipeline_id")
+        stage_id = deal_data.get("stage_id")
+        title = deal_data.get("title", "")
+        person_id = deal_data.get("person_id")
+        
+        # בדיקה אם יש לנו מיפוי מתאים לעסקה הזו
+        deal_type = None
+        
+        # ניקח את סוג העסקה לפי הכותרת - בדרך כלל היא מציינת את סוג העסקה
+        for deal_type_key in DEAL_TYPE_TO_FORM.keys():
+            if deal_type_key in title:
+                deal_type = deal_type_key
+                break
+        
+        # אם לא מצאנו סוג עסקה מתאים, נצא מהפונקציה
+        if not deal_type:
+            print(f"No matching form found for deal title: {title}")
+            return
+        
+        # קבלת פרטי השאלון המתאים
+        form_info = DEAL_TYPE_TO_FORM[deal_type]
+        form_id = form_info["form_id"]
+        form_name = form_info["form_name"]
+        
+        # יצירת קישור לשאלון עם פרמטרים מותאמים
+        jotform_url = f"https://form.jotform.com/{form_id}?dealId={deal_id}&personId={person_id}"
+        
+        # בדיקה אם כבר יצרנו פעילות כזו לעסקה זו
+        activity_key = f"deal_form_{deal_id}_{form_id}"
+        if activity_key in task_history:
+            print(f"Form link activity already exists for deal {deal_id} and form {form_id}")
+            return
+        
+        # קבלת פרטי הלקוח מפייפדרייב
+        if person_id:
+            person_url = f"https://api.pipedrive.com/v1/persons/{person_id}?api_token={PIPEDRIVE_API_KEY}"
+            response = requests.get(person_url)
+            if response.status_code == 200:
+                person_data = response.json()["data"]
+                person_name = person_data.get("name", "")
+            else:
+                person_name = "לקוח"
+        else:
+            person_name = "לקוח"
+        
+        # יצירת פעילות חדשה בפייפדרייב
+        activity_data = {
+            "subject": f"שאלון {form_name} ל{person_name}",
+            "type": "task",
+            "due_date": (datetime.now() + timedelta(days=3)).strftime('%Y-%m-%d'),
+            "due_time": "12:00",
+            "deal_id": deal_id,
+            "person_id": person_id,
+            "public_description": f"אנא שלח ללקוח את הקישור לשאלון {form_name} לצורך המשך הטיפול\n\nקישור לשאלון: {jotform_url}",
+        }
+        
+        # שליחת הבקשה ליצירת פעילות
+        activity_url = f"https://api.pipedrive.com/v1/activities?api_token={PIPEDRIVE_API_KEY}"
+        response = requests.post(activity_url, json=activity_data)
+        
+        if response.status_code == 201:
+            print(f"Created form link activity for deal {deal_id} with form {form_name}")
+            # שמירת מזהה הפעילות למניעת כפילויות
+            task_history[activity_key] = response.json()["data"]["id"]
+        else:
+            print(f"Failed to create form link activity: {response.status_code} {response.text}")
+    
+    except Exception as e:
+        print(f"Error creating form link activity: {e}")
+
+
+@app.post("/deal-webhook")
+async def handle_deal_webhook(request: Request):
+    """נקודת קצה לקבלת התראות על יצירת עסקאות חדשות"""
+    try:
+        # קבלת מידע מהבקשה
+        data = await request.json()
+        
+        # הדפסה בסיסית של הנתונים שהתקבלו
+        print("================ DEAL WEBHOOK REQUEST =================")
+        print(f"Webhook data received with keys: {', '.join(data.keys())}")
+        
+        # בדיקת קיום נתונים בסיסיים
+        if not data:
+            return {"status": "error", "message": "No data received"}
+        
+        # אתחול משתנים בסיסיים
+        deal_id = None
+        deal_data = None
+        
+        # איתור מזהה העסקה
+        if "data" in data and "id" in data["data"]:
+            deal_id = data["data"]["id"]
+            deal_data = data["data"]
+            print(f"Found deal_id in data.id: {deal_id}")
+        else:
+            # לוגיקה חלופית לאיתור מזהה העסקה
+            paths_to_try = [
+                lambda d: d.get("current", {}).get("deal_id", {}).get("value"),
+                lambda d: d.get("id"),
+                lambda d: d.get("current", {}).get("id"),
+                lambda d: d.get("current", {}).get("id") if d.get("event") == "updated.deal" else None,
+                lambda d: d.get("previous", {}).get("id"),
+                lambda d: d.get("meta", {}).get("entity_id")
+            ]
+            
+            for i, path_func in enumerate(paths_to_try):
+                try:
+                    val = path_func(data)
+                    if val:
+                        deal_id = val
+                        deal_data = data
+                        print(f"Found deal_id via path {i+1}: {deal_id}")
+                        break
+                except Exception as e:
+                    print(f"Error checking path {i+1}: {e}")
+        
+        # אם מצאנו את הנתונים הנדרשים - בדוק אם זו משימה כפולה
+        if deal_id and deal_data:
+            # בדיקת כפילות רק בזמן קצר
+            if is_recent_task(deal_id, "deal"):
+                print(f"Skipping duplicate task for deal_id: {deal_id}")
+                return {"status": "skipped", "reason": "Duplicate task", "deal_id": deal_id}
+            
+            print(f"Scheduling background task for deal_id: {deal_id}")
+            background_tasks.add_task(create_deal_form_activity, deal_id, deal_data)
+            return {"status": "processing", "deal_id": deal_id}
+        else:
+            print(f"Missing required data - deal_id: {deal_id}, deal_data: {deal_data}")
+            return {"status": "ignored", "reason": "Missing required data"}
+    
+    except Exception as e:
+        print(f"ERROR in deal webhook handler: {str(e)}")
+        print(traceback.format_exc())
+        return {"status": "error", "message": f"Internal error: {str(e)}"}
+
+@app.on_event("startup")
+async def on_startup():
+    print("Application started")
 
 @app.get("/")
 async def root():
