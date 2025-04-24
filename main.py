@@ -125,7 +125,10 @@ def create_jotform_task(person_id, field_value):
         
         # הכנת המשימה
         task_payload = {
-            "subject": "לחיצה על הקישור תוביל לשאלון תחומים",
+            "subject": f"שאלון תחומים ל{first_name} {last_name}",
+            "type": "task",  # הגדרה מפורשת של סוג המשימה
+            "due_date": (datetime.now() + timedelta(days=3)).strftime('%Y-%m-%d'),
+            "due_time": "12:00", 
             "done": 0,
             "person_id": person_id,
             "note": f"היי! הנה הקישור שלך לטופס:\n{jotform_link}",
