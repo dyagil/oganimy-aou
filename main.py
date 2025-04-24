@@ -138,7 +138,7 @@ def create_jotform_task(person_id, field_value):
         
         # הכנת המשימה - עם פורמט מתאים למשימות פייפדרייב החדשות
         task_payload = {
-            "subject": "שאלון תחומים ל" + client_name,
+            "subject": f"שאלון תחומים ל{first_name} {last_name}",
             "type": "task",
             "due_date": (datetime.now() + timedelta(days=3)).strftime('%Y-%m-%d'),
             "due_time": "12:00",
