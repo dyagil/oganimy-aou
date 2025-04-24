@@ -137,6 +137,27 @@ def create_jotform_task(person_id, field_value):
             # במקרה של שגיאה, נשתמש בקישור המקורי
         
         # הכנת המשימה - עם פורמט מתאים למשימות פייפדרייב החדשות
+        # איתור עסקאות הקשורות לאיש הקשר
+        deals_url = f"https://api.pipedrive.com/v1/persons/{person_id}/deals?status=open&api_token={PIPEDRIVE_API_KEY}"
+        try:
+            deals_response = requests.get(deals_url, timeout=10)
+            if deals_response.status_code == 200:
+                deals_data = deals_response.json().get("data", [])
+                if deals_data and len(deals_data) > 0:
+                    # השתמש בעסקה הראשונה שנמצאה
+                    deal_id = deals_data[0].get("id")
+                    print(f"Found related deal ID: {deal_id}")
+                else:
+                    deal_id = None
+                    print("No related deals found for person")
+            else:
+                deal_id = None
+                print(f"Failed to get deals: {deals_response.status_code}")
+        except Exception as e:
+            deal_id = None
+            print(f"Error fetching deals: {e}")
+            
+        # הכנת המשימה
         task_payload = {
             "subject": f"שאלון תחומים ל{first_name} {last_name}",
             "type": "task",
@@ -145,6 +166,10 @@ def create_jotform_task(person_id, field_value):
             "person_id": person_id,
             "public_description": f"אנא שלח ללקוח את הקישור לשאלון תחומים לצורך המשך הטיפול\n\nקישור לשאלון: {jotform_link}",
         }
+        
+        # הוספת מזהה עסקה אם נמצא
+        if deal_id:
+            task_payload["deal_id"] = deal_id
         
         # יצירת משימה חדשה ב-Pipedrive
         task_url = f"https://api.pipedrive.com/v1/activities?api_token={PIPEDRIVE_API_KEY}"
