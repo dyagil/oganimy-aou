@@ -257,19 +257,71 @@ async def create_deal_form_activity(deal_id, deal_data):
     יצירת פעילות בפייפדרייב עם קישור לשאלון מתאים בהתאם לסוג העסקה
     """
     try:
-        # בדיקה אם יש לנו מיפוי לסוג העסקה הזו
-        pipeline_id = deal_data.get("pipeline_id")
-        stage_id = deal_data.get("stage_id")
-        title = deal_data.get("title", "")
-        person_id = deal_data.get("person_id")
+        print("\n=========== CREATING DEAL FORM ACTIVITY ===========")
+        print(f"Processing deal_id: {deal_id}")
+        print(f"Deal data keys: {', '.join(deal_data.keys() if isinstance(deal_data, dict) else [])}")
         
-        # בדיקה אם יש לנו מיפוי מתאים לעסקה הזו
+        # הדפסת פרטים חשובים מהעסקה לצורך דיבוג
+        if isinstance(deal_data, dict):
+            title = deal_data.get("title", "")
+            pipeline_id = deal_data.get("pipeline_id")
+            stage_id = deal_data.get("stage_id")
+            person_id = deal_data.get("person_id")
+            
+            print(f"Deal Title: {title}")
+            print(f"Pipeline ID: {pipeline_id}")
+            print(f"Stage ID: {stage_id}")
+            print(f"Person ID: {person_id}")
+            
+            # פתרון חלופי למציאת הכותרת
+            if not title and deal_id:
+                # אם אין כותרת, ננסה להשיג את העסקה ישירות מה-API
+                try:
+                    print(f"Fetching deal details from API for deal_id: {deal_id}")
+                    deal_url = f"https://api.pipedrive.com/v1/deals/{deal_id}?api_token={PIPEDRIVE_API_KEY}"
+                    response = requests.get(deal_url)
+                    if response.status_code == 200:
+                        deal_details = response.json().get("data", {})
+                        title = deal_details.get("title", "")
+                        pipeline_id = deal_details.get("pipeline_id")
+                        stage_id = deal_details.get("stage_id")
+                        person_id = deal_details.get("person_id")
+                        print(f"Retrieved from API - Deal title: {title}, pipeline: {pipeline_id}, person: {person_id}")
+                    else:
+                        print(f"Failed to get deal details: {response.status_code} {response.text}")
+                except Exception as e:
+                    print(f"Error fetching deal details: {e}")
+        else:
+            print(f"WARNING: deal_data is not a dictionary: {type(deal_data)}")
+            # נסיון להשיג מידע ישירות מה-API
+            try:
+                print(f"Fetching deal details from API for deal_id: {deal_id}")
+                deal_url = f"https://api.pipedrive.com/v1/deals/{deal_id}?api_token={PIPEDRIVE_API_KEY}"
+                response = requests.get(deal_url)
+                if response.status_code == 200:
+                    deal_data = response.json().get("data", {})
+                    title = deal_data.get("title", "")
+                    pipeline_id = deal_data.get("pipeline_id")
+                    stage_id = deal_data.get("stage_id")
+                    person_id = deal_data.get("person_id")
+                    print(f"Retrieved from API - Deal title: {title}, pipeline: {pipeline_id}, person: {person_id}")
+                else:
+                    print(f"Failed to get deal details: {response.status_code} {response.text}")
+                    return
+            except Exception as e:
+                print(f"Error fetching deal details: {e}")
+                return
+        
+        # בדיקה אם הכותרת מתאימה לאחד השאלונים שלנו
         deal_type = None
+        print(f"Checking if deal title '{title}' matches any of our form types...")
+        print(f"Available form types: {', '.join(DEAL_TYPE_TO_FORM.keys())}")
         
-        # ניקח את סוג העסקה לפי הכותרת - בדרך כלל היא מציינת את סוג העסקה
         for deal_type_key in DEAL_TYPE_TO_FORM.keys():
+            print(f"Checking if '{deal_type_key}' is in '{title}'")
             if deal_type_key in title:
                 deal_type = deal_type_key
+                print(f"MATCH FOUND! Deal type: {deal_type}")
                 break
         
         # אם לא מצאנו סוג עסקה מתאים, נצא מהפונקציה
@@ -281,9 +333,11 @@ async def create_deal_form_activity(deal_id, deal_data):
         form_info = DEAL_TYPE_TO_FORM[deal_type]
         form_id = form_info["form_id"]
         form_name = form_info["form_name"]
+        print(f"Using form: {form_name} with ID: {form_id}")
         
         # יצירת קישור לשאלון עם פרמטרים מותאמים
         jotform_url = f"https://form.jotform.com/{form_id}?dealId={deal_id}&personId={person_id}"
+        print(f"Generated form URL: {jotform_url}")
         
         # בדיקה אם כבר יצרנו פעילות כזו לעסקה זו
         activity_key = f"deal_form_{deal_id}_{form_id}"
@@ -292,16 +346,20 @@ async def create_deal_form_activity(deal_id, deal_data):
             return
         
         # קבלת פרטי הלקוח מפייפדרייב
+        person_name = "לקוח"
         if person_id:
-            person_url = f"https://api.pipedrive.com/v1/persons/{person_id}?api_token={PIPEDRIVE_API_KEY}"
-            response = requests.get(person_url)
-            if response.status_code == 200:
-                person_data = response.json()["data"]
-                person_name = person_data.get("name", "")
-            else:
-                person_name = "לקוח"
-        else:
-            person_name = "לקוח"
+            try:
+                print(f"Fetching person details for person_id: {person_id}")
+                person_url = f"https://api.pipedrive.com/v1/persons/{person_id}?api_token={PIPEDRIVE_API_KEY}"
+                response = requests.get(person_url)
+                if response.status_code == 200:
+                    person_data = response.json().get("data", {})
+                    person_name = person_data.get("name", "לקוח")
+                    print(f"Retrieved person name: {person_name}")
+                else:
+                    print(f"Failed to get person details: {response.status_code}")
+            except Exception as e:
+                print(f"Error fetching person details: {e}")
         
         # יצירת פעילות חדשה בפייפדרייב
         activity_data = {
@@ -314,31 +372,39 @@ async def create_deal_form_activity(deal_id, deal_data):
             "public_description": f"אנא שלח ללקוח את הקישור לשאלון {form_name} לצורך המשך הטיפול\n\nקישור לשאלון: {jotform_url}",
         }
         
+        print(f"Creating activity with data: {json.dumps(activity_data)}")
+        
         # שליחת הבקשה ליצירת פעילות
         activity_url = f"https://api.pipedrive.com/v1/activities?api_token={PIPEDRIVE_API_KEY}"
+        print(f"Sending request to: {activity_url}")
+        
         response = requests.post(activity_url, json=activity_data)
+        print(f"Response status code: {response.status_code}")
         
         if response.status_code == 201:
-            print(f"Created form link activity for deal {deal_id} with form {form_name}")
+            print(f"SUCCESS: Created form link activity for deal {deal_id} with form {form_name}")
             # שמירת מזהה הפעילות למניעת כפילויות
-            task_history[activity_key] = response.json()["data"]["id"]
+            task_history[activity_key] = response.json().get("data", {}).get("id")
         else:
-            print(f"Failed to create form link activity: {response.status_code} {response.text}")
+            print(f"FAILED to create form link activity: {response.status_code}")
+            print(f"Response: {response.text[:500]}")
     
     except Exception as e:
-        print(f"Error creating form link activity: {e}")
+        print(f"ERROR creating form link activity: {e}")
+        print(traceback.format_exc())
 
 
 @app.post("/deal-webhook")
-async def handle_deal_webhook(request: Request):
+async def handle_deal_webhook(request: Request, background_tasks: BackgroundTasks):
     """נקודת קצה לקבלת התראות על יצירת עסקאות חדשות"""
     try:
         # קבלת מידע מהבקשה
         data = await request.json()
         
-        # הדפסה בסיסית של הנתונים שהתקבלו
+        # הדפסה מפורטת של הנתונים שהתקבלו
         print("================ DEAL WEBHOOK REQUEST =================")
-        print(f"Webhook data received with keys: {', '.join(data.keys())}")
+        print(f"Webhook data received: {json.dumps(data, indent=2)[:500]}...")  # מדפיס את 500 התווים הראשונים
+        print(f"Webhook data keys: {', '.join(data.keys())}")
         
         # בדיקת קיום נתונים בסיסיים
         if not data:
@@ -348,20 +414,34 @@ async def handle_deal_webhook(request: Request):
         deal_id = None
         deal_data = None
         
-        # איתור מזהה העסקה
-        if "data" in data and "id" in data["data"]:
-            deal_id = data["data"]["id"]
-            deal_data = data["data"]
-            print(f"Found deal_id in data.id: {deal_id}")
-        else:
-            # לוגיקה חלופית לאיתור מזהה העסקה
+        # איתור מזהה העסקה - בדיקה מקיפה יותר
+        if "data" in data:
+            print(f"Data section keys: {', '.join(data['data'].keys() if isinstance(data['data'], dict) else [])}")
+            if isinstance(data['data'], dict) and "id" in data["data"]:
+                deal_id = data["data"]["id"]
+                deal_data = data["data"]
+                print(f"Found deal_id in data.id: {deal_id}")
+                # הדפסת כותרת העסקה אם קיימת
+                if "title" in deal_data:
+                    print(f"Deal title: {deal_data['title']}")
+        elif "current" in data and isinstance(data['current'], dict):
+            print(f"Current section keys: {', '.join(data['current'].keys())}")
+            if "id" in data["current"]:
+                deal_id = data["current"]["id"]
+                deal_data = data["current"]
+                print(f"Found deal_id in current.id: {deal_id}")
+                if "title" in deal_data:
+                    print(f"Deal title: {deal_data['title']}")
+        
+        # אם עדיין לא מצאנו, ננסה לחפש בכל מיני מקומות
+        if not deal_id:
+            print("Trying alternative paths to find deal_id...")
             paths_to_try = [
-                lambda d: d.get("current", {}).get("deal_id", {}).get("value"),
-                lambda d: d.get("id"),
-                lambda d: d.get("current", {}).get("id"),
-                lambda d: d.get("current", {}).get("id") if d.get("event") == "updated.deal" else None,
-                lambda d: d.get("previous", {}).get("id"),
-                lambda d: d.get("meta", {}).get("entity_id")
+                lambda d: d.get("meta", {}).get("id"),
+                lambda d: d.get("meta", {}).get("entity_id"),
+                lambda d: d.get("event", "").split(".")[1] if "." in d.get("event", "") else None,
+                lambda d: d.get("current", {}).get("deal_id", {}).get("value") if isinstance(d.get("current"), dict) else None,
+                lambda d: d.get("id")
             ]
             
             for i, path_func in enumerate(paths_to_try):
@@ -369,16 +449,31 @@ async def handle_deal_webhook(request: Request):
                     val = path_func(data)
                     if val:
                         deal_id = val
-                        deal_data = data
+                        deal_data = data  # יש סיכוי שנצטרך להתאים את זה
                         print(f"Found deal_id via path {i+1}: {deal_id}")
                         break
                 except Exception as e:
                     print(f"Error checking path {i+1}: {e}")
         
-        # אם מצאנו את הנתונים הנדרשים - בדוק אם זו משימה כפולה
+        # נסיון לאתר את סוג העסקה ולהדפיס שלבי ביניים
+        if deal_id and deal_data:
+            # כדי להבין איך לזהות את סוג העסקה
+            deal_type = None
+            title = deal_data.get("title", "") if isinstance(deal_data, dict) else ""
+            if title:
+                print(f"Checking if deal title '{title}' matches any known deal types...")
+                for deal_type_key in DEAL_TYPE_TO_FORM.keys():
+                    if deal_type_key in title:
+                        deal_type = deal_type_key
+                        print(f"Matched deal type: {deal_type}")
+                        break
+            if not deal_type:
+                print(f"WARNING: No matching form found for deal title: {title}")
+        
+        # אם מצאנו את הנתונים הנדרשים - נפעיל את המשימה
         if deal_id and deal_data:
             # בדיקת כפילות רק בזמן קצר
-            if is_recent_task(deal_id, "deal"):
+            if is_recent_task(str(deal_id), "deal"):
                 print(f"Skipping duplicate task for deal_id: {deal_id}")
                 return {"status": "skipped", "reason": "Duplicate task", "deal_id": deal_id}
             
@@ -386,7 +481,7 @@ async def handle_deal_webhook(request: Request):
             background_tasks.add_task(create_deal_form_activity, deal_id, deal_data)
             return {"status": "processing", "deal_id": deal_id}
         else:
-            print(f"Missing required data - deal_id: {deal_id}, deal_data: {deal_data}")
+            print(f"ERROR: Missing required data - deal_id: {deal_id}, deal_data available: {deal_data is not None}")
             return {"status": "ignored", "reason": "Missing required data"}
     
     except Exception as e:
