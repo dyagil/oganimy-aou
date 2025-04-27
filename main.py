@@ -420,6 +420,12 @@ async def create_deal_form_activity(deal_id, deal_data):
                     # ניסיון לחלץ מספר תעודת זהות, תאריך לידה, מצב משפחתי ומספר ילדים משדות מותאמים אישית
                     custom_fields = person_data.get("custom_fields", {})
                     
+                    # הדפסה של כל השדות המותאמים אישית לצורך דיבוג
+                    print("=== AVAILABLE CUSTOM FIELDS ===")
+                    for field_key, field_value in custom_fields.items():
+                        print(f"Field: {field_key} = {field_value}")
+                    print("=== END OF CUSTOM FIELDS ===")
+                    
                     # חיפוש מספר תעודת זהות
                     for field_key, field_value in custom_fields.items():
                         if field_value and ("\u05de\u05e1\u05e4\u05e8 \u05ea\u05e2\u05d5\u05d3\u05ea \u05d6\u05d4\u05d5\u05ea" in str(field_key).lower() or 
