@@ -1,25 +1,39 @@
 from fastapi import FastAPI, Request, BackgroundTasks
 import requests
-import os
-import uvicorn
+import asyncio
+import hashlib
 import json
+import os
 import time
 import traceback
-import hashlib
 import urllib.parse
 from datetime import datetime, timedelta
+from typing import Dict, Optional, Set, Tuple, Any
+
+import requests
 from dateutil import parser
 from dotenv import load_dotenv
+from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
-# טען משתני סביבה מקובץ .env (אם קיים)
-load_dotenv()
-
-app = FastAPI()
+# ייבוא הפונקציות החדשות לטיפול בשאלוני מס
+from tax_form_utils import update_pipedrive_deal_with_tax_form, is_tax_form_submission
 
 JOTFORM_URL = "https://form.jotform.com/202432710986455"
-PIPEDRIVE_API_KEY = os.getenv("PIPEDRIVE_API_KEY", "TO_BE_REPLACED")  # יוחלף ב-Railway כ-ENV
-BITLY_ACCESS_TOKEN = os.getenv("BITLY_ACCESS_TOKEN", "b77d50a5804d68a3762d38bad84749be9b1b0fc2")
-JOTFORM_API_KEY = os.getenv("JOTFORM_API_KEY", "TO_BE_REPLACED")  # יש להוסיף מפתח API של JotForm
+
+# קבלת משתני סביבה
+load_dotenv()
+
+PIPEDRIVE_API_KEY = os.getenv("PIPEDRIVE_API_KEY")
+if not PIPEDRIVE_API_KEY:
+    raise ValueError("חסר מפתח API של Pipedrive. נדרש להגדיר את PIPEDRIVE_API_KEY")
+
+BITLY_ACCESS_TOKEN = os.getenv("BITLY_ACCESS_TOKEN")
+
+# נתונים גלובליים לחיבור עם API ואחסון היסטוריה למניעת כפילויות
+JOTFORM_API_KEY = os.getenv("JOTFORM_API_KEY")
+if not JOTFORM_API_KEY:
+    print("Warning: JOTFORM_API_KEY is not set. JotForm submission processing will not work properly.")
 
 # מיפוי בין סוגי עסקאות לשאלונים ספציפיים
 DEAL_TYPE_TO_FORM = {
@@ -854,11 +868,13 @@ async def handle_jotform_webhook(request: Request):
             
         # מידע ההגשה
         submission_id = form_data.get("submissionID")
+        form_id = form_data.get("formID")
+        form_title = form_data.get("formTitle", "")
         
         if not submission_id:
             return {"status": "error", "message": "Submission ID not found in webhook data"}
             
-        print(f"Received webhook for submission ID: {submission_id}")
+        print(f"Received webhook for submission ID: {submission_id}, Form ID: {form_id}, Title: {form_title}")
         
         # שליפת מידע מלא על ההגשה דרך ה-API של JotForm
         submission_data = await get_jotform_submission(submission_id)
@@ -872,25 +888,73 @@ async def handle_jotform_webhook(request: Request):
             if not key.startswith('_'):  # להתעלם ממטה-דאטה
                 shortened_value = str(value)[:100] + ('...' if len(str(value)) > 100 else '')
                 print(f"  {key}: {shortened_value}")
-            
-        # חילוץ מזהה הלקוח מהנתונים
-        client_id = None
-        if "typeA9" in submission_data and submission_data["typeA9"]:
-            client_id = submission_data["typeA9"]
-            print(f"Found client ID: {client_id}")
-        else:
-            print("Client ID not found in form data. Checking all fields:")
-            for field, value in submission_data.items():
-                print(f"Field: {field}, Value: {value}")
-            return {"status": "error", "message": "Client ID not found in submission data"}
-            
-        # עדכון כרטיס הלקוח בפייפדרייב
-        success = await update_pipedrive_person(client_id, submission_data)
         
-        if success:
-            return {"status": "success", "message": "Person updated in Pipedrive"}
+        # בדיקה אם מדובר בשאלון מס
+        is_tax_form = is_tax_form_submission(form_id, form_title)
+        print(f"Form type detection: Is tax form = {is_tax_form}")
+        
+        if is_tax_form:
+            # עבור שאלון מס, צריך לעדכן את הדיל ולא את כרטיס הלקוח
+            # חילוץ מזהה הדיל ומזהה הלקוח מהנתונים
+            deal_id = None
+            client_id = None
+            
+            if "typeA8" in submission_data and submission_data["typeA8"]:
+                deal_id = submission_data["typeA8"]
+                print(f"Found deal ID: {deal_id}")
+            
+            if "typeA9" in submission_data and submission_data["typeA9"]:
+                client_id = submission_data["typeA9"]
+                print(f"Found client ID: {client_id}")
+            
+            if not deal_id:
+                print("Deal ID not found in tax form data. Checking all fields:")
+                for field, value in submission_data.items():
+                    print(f"Field: {field}, Value: {value}")
+                
+                if client_id:
+                    # אם אין מזהה דיל אבל יש מזהה לקוח, ננסה למצוא דיל החזר מס פעיל עבור הלקוח
+                    print(f"Trying to find active tax return deal for client {client_id}")
+                    deals_url = f"https://api.pipedrive.com/v1/deals?person_id={client_id}&status=open&api_token={PIPEDRIVE_API_KEY}"
+                    response = requests.get(deals_url)
+                    
+                    if response.status_code == 200:
+                        deals_data = response.json().get("data", [])
+                        for deal in deals_data:
+                            if "החזר מס" in deal.get("title", ""):
+                                deal_id = deal.get("id")
+                                print(f"Found tax return deal: {deal_id}")
+                                break
+            
+            if deal_id:
+                # עדכון הדיל בפייפדרייב עם נתוני שאלון המס
+                success = await update_pipedrive_deal_with_tax_form(PIPEDRIVE_API_KEY, deal_id, submission_data)
+                
+                if success:
+                    return {"status": "success", "message": "Tax form data added to deal in Pipedrive"}
+                else:
+                    return {"status": "error", "message": "Failed to update deal with tax form data"}
+            else:
+                return {"status": "error", "message": "Could not find appropriate deal for tax form data"}
         else:
-            return {"status": "error", "message": "Failed to update person in Pipedrive"}
+            # שאלון רגיל - חילוץ מזהה הלקוח
+            client_id = None
+            if "typeA9" in submission_data and submission_data["typeA9"]:
+                client_id = submission_data["typeA9"]
+                print(f"Found client ID: {client_id}")
+            else:
+                print("Client ID not found in form data. Checking all fields:")
+                for field, value in submission_data.items():
+                    print(f"Field: {field}, Value: {value}")
+                return {"status": "error", "message": "Client ID not found in submission data"}
+                
+            # עדכון כרטיס הלקוח בפייפדרייב
+            success = await update_pipedrive_person(client_id, submission_data)
+            
+            if success:
+                return {"status": "success", "message": "Person updated in Pipedrive"}
+            else:
+                return {"status": "error", "message": "Failed to update person in Pipedrive"}
             
     except Exception as e:
         print(f"ERROR in JotForm webhook handler: {str(e)}")
