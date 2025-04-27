@@ -424,7 +424,40 @@ async def create_deal_form_activity(deal_id, deal_data):
                     print("=== AVAILABLE CUSTOM FIELDS ===")
                     for field_key, field_value in custom_fields.items():
                         print(f"Field: {field_key} = {field_value}")
+                        
+                        # בדיקה של שדות דומים לתעודת זהות
+                        if field_value and not id_number and any(term in str(field_key).lower() for term in ["תעודת זהות", "id", "תז", "מספר זיהוי"]):
+                            raw_id = str(field_value) if field_value else ""
+                            id_number = ''.join(c for c in raw_id if c.isdigit())
+                            print(f"Found ID number from field {field_key}: {id_number}")
+                            
+                        # בדיקה של שדות דומים לתאריך לידה
+                        if field_value and not birth_date and any(term in str(field_key).lower() for term in ["תאריך לידה", "birth", "birthday", "dob", "date of birth", "לידה"]):
+                            try:
+                                birth_date_obj = parser.parse(str(field_value)) if field_value else None
+                                if birth_date_obj:
+                                    birth_date = birth_date_obj.strftime("%d/%m/%Y")
+                                    print(f"Found birth date from field {field_key}: {birth_date}")
+                            except Exception as e:
+                                print(f"Error parsing date from field {field_key}: {e}")
+                                
+                        # בדיקה של שדות דומים למצב משפחתי
+                        if field_value and not marital_status and any(term in str(field_key).lower() for term in ["מצב משפחתי", "marital", "סטטוס משפחתי", "married"]):
+                            marital_status = str(field_value)
+                            print(f"Found marital status from field {field_key}: {marital_status}")
+                            
+                        # בדיקה של שדות דומים למספר ילדים
+                        if field_value and not children_number and any(term in str(field_key).lower() for term in ["מספר ילדים", "children", "kids", "ילדים"]):
+                            children_number = str(field_value)
+                            print(f"Found number of children from field {field_key}: {children_number}")
                     print("=== END OF CUSTOM FIELDS ===")
+                    
+                    # בדיקה גם בשדות רגילים למקרה שהמידע נמצא שם
+                    print("=== REGULAR PERSON FIELDS ===")
+                    for field_key, field_value in person_data.items():
+                        if field_key != "custom_fields":
+                            print(f"Field: {field_key} = {field_value}")
+                    print("=== END OF REGULAR FIELDS ===")
                     
                     # חיפוש מספר תעודת זהות
                     for field_key, field_value in custom_fields.items():
