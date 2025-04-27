@@ -486,7 +486,7 @@ async def create_deal_form_activity(deal_id, deal_data):
         marital_status = str(marital_status) if marital_status is not None else ""
         
         # יצירת קישור לשאלון עם הפרמטרים הנכונים לטופס JotForm
-        # ניסיון עם מספר אפשרויות לפרמטרים של תאריך לידה ותעודת זהות
+        # שימוש בשמות הפרמטרים המדויקים כפי שמופיעים בטופס JotForm
         jotform_url = f"https://form.jotform.com/{form_id}?" + \
             f"typeA8={deal_id_str}&" + \
             f"typeA9={person_id_str}&" + \
@@ -494,15 +494,9 @@ async def create_deal_form_activity(deal_id, deal_data):
             f"Lname={urllib.parse.quote(last_name)}&" + \
             f"phoneNumber={urllib.parse.quote(phone)}&" + \
             f"typeA={urllib.parse.quote(id_number)}&" + \
-            f"q5_idNumber={urllib.parse.quote(id_number)}&" + \
-            f"input_5={urllib.parse.quote(id_number)}&" + \
-            f"input109={urllib.parse.quote(id_number)}&" + \
-            f"BB-DATHE={urllib.parse.quote(birth_date)}&" + \
-            f"q_date={urllib.parse.quote(birth_date)}&" + \
-            f"input_birth_date={urllib.parse.quote(birth_date)}&" + \
             f"input117={urllib.parse.quote(birth_date)}&" + \
-            f"typeA23={urllib.parse.quote(children_number)}&" + \
-            f"typeA21={urllib.parse.quote(marital_status)}"
+            f"typeA21={urllib.parse.quote(marital_status)}&" + \
+            f"typeA23={urllib.parse.quote(children_number)}"
         print(f"Generated form URL: {jotform_url}")
         
         # קיצור הקישור באמצעות Bitly
