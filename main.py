@@ -374,48 +374,13 @@ async def create_deal_form_activity(deal_id, deal_data):
         deal_id_str = str(deal_id) if deal_id is not None else ""
         person_id_str = str(person_id) if person_id is not None else ""
         
-        # וידוא שכל הערכים מומרים למחרוזות או ריקים
-        first_name = str(first_name) if first_name is not None else ""
-        last_name = str(last_name) if last_name is not None else ""
-        phone = str(phone) if phone is not None else ""
-        email = str(email) if email is not None else ""
-        id_number = str(id_number) if id_number is not None else ""
-        
-        # יצירת קישור לשאלון עם כל הפרטים שחילצנו ושמות הפרמטרים המתאימים לטופס
-        jotform_url = f"https://form.jotform.com/{form_id}?input_51={deal_id_str}&input_52={person_id_str}&input_4={urllib.parse.quote(first_name)}&input_53={urllib.parse.quote(last_name)}&input_6={urllib.parse.quote(phone)}&input_5={urllib.parse.quote(id_number)}"
-        print(f"Generated form URL: {jotform_url}")
-        
-        # קיצור הקישור באמצעות Bitly
-        try:
-            bitly_url = "https://api-ssl.bitly.com/v4/shorten"
-            payload = {
-                "long_url": jotform_url
-            }
-            headers = {
-                "Authorization": f"Bearer {BITLY_ACCESS_TOKEN}",
-                "Content-Type": "application/json"
-            }
-            
-            bitly_response = requests.post(bitly_url, json=payload, headers=headers, timeout=10)
-            
-            if bitly_response.status_code == 200 or bitly_response.status_code == 201:
-                shortened_url = bitly_response.json().get("link")
-                print(f"Shortened URL with Bitly: {shortened_url}")
-                jotform_url = shortened_url
-            else:
-                print(f"Failed to shorten URL with Bitly. Status code: {bitly_response.status_code}")
-                print(f"Response: {bitly_response.text[:200]}")
-        except Exception as e:
-            print(f"Error shortening URL with Bitly: {str(e)}")
-            # במקרה של שגיאה, נשתמש בקישור המקורי
-        
         # בדיקה אם כבר יצרנו פעילות כזו לעסקה זו
         activity_key = f"deal_form_{deal_id}_{form_id}"
         if activity_key in task_history:
             print(f"Form link activity already exists for deal {deal_id} and form {form_id}")
             return
         
-        # קבלת פרטי הלקוח מפייפדרייב
+        # הגדרת משתנים לפרטי הלקוח
         person_name = "לקוח"
         first_name = ""
         last_name = ""
@@ -459,6 +424,41 @@ async def create_deal_form_activity(deal_id, deal_data):
                     print(f"Failed to get person details: {response.status_code}")
             except Exception as e:
                 print(f"Error fetching person details: {e}")
+                
+        # וידוא שכל הערכים מומרים למחרוזות או ריקים
+        first_name = str(first_name) if first_name is not None else ""
+        last_name = str(last_name) if last_name is not None else ""
+        phone = str(phone) if phone is not None else ""
+        email = str(email) if email is not None else ""
+        id_number = str(id_number) if id_number is not None else ""
+        
+        # יצירת קישור לשאלון עם כל הפרטים שחילצנו ושמות הפרמטרים המתאימים לטופס
+        jotform_url = f"https://form.jotform.com/{form_id}?input_51={deal_id_str}&input_52={person_id_str}&input_4={urllib.parse.quote(first_name)}&input_53={urllib.parse.quote(last_name)}&input_6={urllib.parse.quote(phone)}&input_5={urllib.parse.quote(id_number)}"
+        print(f"Generated form URL: {jotform_url}")
+        
+        # קיצור הקישור באמצעות Bitly
+        try:
+            bitly_url = "https://api-ssl.bitly.com/v4/shorten"
+            payload = {
+                "long_url": jotform_url
+            }
+            headers = {
+                "Authorization": f"Bearer {BITLY_ACCESS_TOKEN}",
+                "Content-Type": "application/json"
+            }
+            
+            bitly_response = requests.post(bitly_url, json=payload, headers=headers, timeout=10)
+            
+            if bitly_response.status_code == 200 or bitly_response.status_code == 201:
+                shortened_url = bitly_response.json().get("link")
+                print(f"Shortened URL with Bitly: {shortened_url}")
+                jotform_url = shortened_url
+            else:
+                print(f"Failed to shorten URL with Bitly. Status code: {bitly_response.status_code}")
+                print(f"Response: {bitly_response.text[:200]}")
+        except Exception as e:
+            print(f"Error shortening URL with Bitly: {str(e)}")
+            # במקרה של שגיאה, נשתמש בקישור המקורי
         
         # יצירת פעילות חדשה בפייפדרייב
         activity_data = {
