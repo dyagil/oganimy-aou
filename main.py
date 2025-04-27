@@ -442,8 +442,8 @@ async def create_deal_form_activity(deal_id, deal_data):
                             try:
                                 birth_date_obj = parser.parse(str(field_value)) if field_value else None
                                 if birth_date_obj:
-                                    # ניסיון עם פורמט MM/DD/YYYY שנפוץ בג'וטפורם
-                                    birth_date = birth_date_obj.strftime("%m/%d/%Y")
+                                    # שימוש בפורמט DD/MM/YYYY הנדרש עבור שאלון מס
+                                    birth_date = birth_date_obj.strftime("%d/%m/%Y")
                                     print(f"Found birth date: {birth_date}")
                             except:
                                 # אם התאריך כבר בפורמט חוקי, משאיר אותו כמו שהוא
