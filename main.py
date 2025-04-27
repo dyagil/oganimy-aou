@@ -393,6 +393,9 @@ async def create_deal_form_activity(deal_id, deal_data):
         phone = ""
         email = ""
         id_number = ""
+        birth_date = ""
+        children_number = ""
+        marital_status = ""
         
         if person_id:
             try:
@@ -414,10 +417,11 @@ async def create_deal_form_activity(deal_id, deal_data):
                     if person_data.get("email") and len(person_data.get("email", [])) > 0:
                         email = person_data.get("email", [{}])[0].get("value", "")
                     
-                    # ניסיון לחלץ מספר תעודת זהות משדות מותאמים אישית
+                    # ניסיון לחלץ מספר תעודת זהות, תאריך לידה, מצב משפחתי ומספר ילדים משדות מותאמים אישית
                     custom_fields = person_data.get("custom_fields", {})
+                    
+                    # חיפוש מספר תעודת זהות
                     for field_key, field_value in custom_fields.items():
-                        # ניסיון למצוא שדה שמכיל מספר תעודת זהות
                         if field_value and ("\u05de\u05e1\u05e4\u05e8 \u05ea\u05e2\u05d5\u05d3\u05ea \u05d6\u05d4\u05d5\u05ea" in str(field_key).lower() or 
                                           "id" in str(field_key).lower() or 
                                           "\u05ea\u05d6" in str(field_key).lower()):
@@ -425,7 +429,42 @@ async def create_deal_form_activity(deal_id, deal_data):
                             print(f"Found ID number: {id_number}")
                             break
                     
-                    print(f"Retrieved person details: {first_name} {last_name}, phone: {phone}, email: {email}, id: {id_number}")
+                    # חיפוש תאריך לידה
+                    for field_key, field_value in custom_fields.items():
+                        if field_value and ("\u05ea\u05d0\u05e8\u05d9\u05da \u05dc\u05d9\u05d3\u05d4" in str(field_key).lower() or 
+                                          "birth date" in str(field_key).lower() or 
+                                          "birthday" in str(field_key).lower() or
+                                          "date of birth" in str(field_key).lower()):
+                            # המרת תאריך לפורמט הנכון אם אפשר
+                            try:
+                                birth_date_obj = parser.parse(str(field_value)) if field_value else None
+                                if birth_date_obj:
+                                    birth_date = birth_date_obj.strftime("%Y-%m-%d")
+                                    print(f"Found birth date: {birth_date}")
+                            except:
+                                birth_date = str(field_value)
+                                print(f"Found birth date (as string): {birth_date}")
+                            break
+                    
+                    # חיפוש מצב משפחתי
+                    for field_key, field_value in custom_fields.items():
+                        if field_value and ("\u05de\u05e6\u05d1 \u05de\u05e9\u05e4\u05d7\u05ea\u05d9" in str(field_key).lower() or 
+                                          "marital status" in str(field_key).lower() or 
+                                          "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05de\u05e9\u05e4\u05d7\u05ea\u05d9" in str(field_key).lower()):
+                            marital_status = str(field_value)
+                            print(f"Found marital status: {marital_status}")
+                            break
+                            
+                    # חיפוש מספר ילדים
+                    for field_key, field_value in custom_fields.items():
+                        if field_value and ("\u05de\u05e1\u05e4\u05e8 \u05d9\u05dc\u05d3\u05d9\u05dd" in str(field_key).lower() or 
+                                          "children" in str(field_key).lower() or 
+                                          "number of kids" in str(field_key).lower()):
+                            children_number = str(field_value)
+                            print(f"Found number of children: {children_number}")
+                            break
+                    
+                    print(f"Retrieved person details: {first_name} {last_name}, phone: {phone}, email: {email}, id: {id_number}, birth date: {birth_date}, marital status: {marital_status}, children: {children_number}")
                 else:
                     print(f"Failed to get person details: {response.status_code}")
             except Exception as e:
@@ -437,6 +476,9 @@ async def create_deal_form_activity(deal_id, deal_data):
         phone = str(phone) if phone is not None else ""
         email = str(email) if email is not None else ""
         id_number = str(id_number) if id_number is not None else ""
+        birth_date = str(birth_date) if birth_date is not None else ""
+        children_number = str(children_number) if children_number is not None else ""
+        marital_status = str(marital_status) if marital_status is not None else ""
         
         # יצירת קישור לשאלון עם הפרמטרים הנכונים לטופס JotForm
         jotform_url = f"https://form.jotform.com/{form_id}?" + \
@@ -445,7 +487,10 @@ async def create_deal_form_activity(deal_id, deal_data):
             f"name={urllib.parse.quote(first_name)}&" + \
             f"Lname={urllib.parse.quote(last_name)}&" + \
             f"phoneNumber={urllib.parse.quote(phone)}&" + \
-            f"typeA={urllib.parse.quote(id_number)}"
+            f"typeA={urllib.parse.quote(id_number)}&" + \
+            f"BB-DATHE={urllib.parse.quote(birth_date)}&" + \
+            f"typeA23={urllib.parse.quote(children_number)}&" + \
+            f"typeA21={urllib.parse.quote(marital_status)}"
         print(f"Generated form URL: {jotform_url}")
         
         # קיצור הקישור באמצעות Bitly
