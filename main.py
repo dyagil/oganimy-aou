@@ -420,143 +420,100 @@ async def create_deal_form_activity(deal_id, deal_data):
                     # ניסיון לחלץ מספר תעודת זהות, תאריך לידה, מצב משפחתי ומספר ילדים משדות מותאמים אישית
                     custom_fields = person_data.get("custom_fields", {})
                     
-                    # הדפסה של כל השדות המותאמים אישית לצורך דיבוג
-                    print("=== AVAILABLE CUSTOM FIELDS ===")
-                    for field_key, field_value in custom_fields.items():
-                        print(f"Field: {field_key} = {field_value}")
+                    # הצגת כל השדות המותאמים אישית - עוזר לאיתור שדות חסרים
+                    print("=== CUSTOM FIELDS ===\nKey = Value")
+                    
+                    # שמירת כל השדות המותאמים אישית בדיקשנרי לשימוש מאוחר יותר
+                    all_fields = {}
+                    
+                    for key, value in custom_fields.items():
+                        if value is not None and value != "":
+                            all_fields[key] = value
+                        print(f"Field: {key} = {value}")
                         
-                        # בדיקה של שדות דומים לתעודת זהות
-                        if field_value and not id_number and any(term in str(field_key).lower() for term in ["תעודת זהות", "id", "תז", "מספר זיהוי"]):
-                            raw_id = str(field_value) if field_value else ""
-                            id_number = ''.join(c for c in raw_id if c.isdigit())
-                            print(f"Found ID number from field {field_key}: {id_number}")
-                            
-                        # בדיקה של שדות דומים לתאריך לידה
-                        if field_value and not birth_date and any(term in str(field_key).lower() for term in ["תאריך לידה", "birth", "birthday", "dob", "date of birth", "לידה"]):
-                            try:
-                                birth_date_obj = parser.parse(str(field_value)) if field_value else None
-                                if birth_date_obj:
-                                    birth_date = birth_date_obj.strftime("%d/%m/%Y")
-                                    print(f"Found birth date from field {field_key}: {birth_date}")
-                            except Exception as e:
-                                print(f"Error parsing date from field {field_key}: {e}")
-                                
-                        # בדיקה של שדות דומים למצב משפחתי
-                        if field_value and not marital_status and any(term in str(field_key).lower() for term in ["מצב משפחתי", "marital", "סטטוס משפחתי", "married"]):
-                            marital_status = str(field_value)
-                            print(f"Found marital status from field {field_key}: {marital_status}")
-                            
-                        # בדיקה של שדות דומים למספר ילדים
-                        if field_value and not children_number and any(term in str(field_key).lower() for term in ["מספר ילדים", "children", "kids", "ילדים"]):
-                            children_number = str(field_value)
-                            print(f"Found number of children from field {field_key}: {children_number}")
-                    print("=== END OF CUSTOM FIELDS ===")
-                    
-                    # הדפסת כל השדות המותאמים אישית לפני חיפוש מובנה
-                    print("=== ALL CUSTOM FIELDS RAW KEYS AND VALUES ===")
-                    for field_key, field_value in custom_fields.items():
-                        print(f"Key: {field_key} - Value: {field_value}")
-                    print("=== END OF RAW CUSTOM FIELDS ===")
-                    
-                    # בדיקה גם בשדות רגילים למקרה שהמידע נמצא שם
-                    print("=== REGULAR PERSON FIELDS ===")
-                    for field_key, field_value in person_data.items():
-                        if field_key != "custom_fields":
-                            print(f"Field: {field_key} = {field_value}")
-                    print("=== END OF REGULAR FIELDS ===")
-                    
-                    # איפוס המשתנים לפני חיפוש השדות הספציפיים
-                    id_number = ""
-                    birth_date = ""
-                    children_number = ""
-                    marital_status = ""
-                    marital_field = "e54db6d7f2d66f2b568ab5debf077fa27622bf38"  # מזהה מצב משפחתי שזוהה בלוג
+                    id_number = None
+                    birth_date = None
+                    children_number = None
+                    marital_status = None
                     
                     # === חיפוש לפי מזהים ספציפיים שמצאנו בלוג ===
                     
-                    # בדיקה שכל השדות קיימים ב- custom_fields לפני שמנסים לגשת אליהם
-                    id_field = "298a5a71694995d831cd85c12084b71714234057"  # מזהה תעודת זהות
-                    birth_date_field = "ab7c49cd143665a08d4f4d24fcd33a5597c003fd"  # מזהה תאריך לידה
-                    children_field = "62c775c3816aa805892280fad530d42bc1813512"  # מזהה מספר ילדים
-                    
-                    print(f"Key exists checks: ID field: {id_field in custom_fields}, birth date field: {birth_date_field in custom_fields}, children field: {children_field in custom_fields}, marital field: {marital_field in custom_fields}")
-                    
                     # === חיפוש מספר תעודת זהות ===
                     try:
-                        if id_field in custom_fields:
-                            field_value = custom_fields[id_field]
+                        if "298a5a71694995d831cd85c12084b71714234057" in custom_fields:
+                            field_value = custom_fields["298a5a71694995d831cd85c12084b71714234057"]
                             if field_value:
                                 raw_id = str(field_value)
                                 id_number = ''.join(c for c in raw_id if c.isdigit())
-                                print(f"Found ID from specific field {id_field}: {id_number} (raw: {raw_id})")
+                                print(f"Found ID from specific field 298a5a71694995d831cd85c12084b71714234057: {id_number} (raw: {raw_id})")
                             else:
-                                print(f"Field {id_field} exists but value is empty or None")
+                                print(f"Field 298a5a71694995d831cd85c12084b71714234057 exists but value is empty or None")
                         else:
-                            print(f"Field {id_field} not found in custom_fields")
+                            print(f"Field 298a5a71694995d831cd85c12084b71714234057 not found in custom_fields")
                             # מציאת מפתחות דומים אם המפתח המדויק לא נמצא
                             for key in custom_fields.keys():
-                                if id_field[:8] in key:
+                                if "298a5a71694995d831cd85c12084b71714234057"[:8] in key:
                                     print(f"Found similar ID field key: {key}")
                     except Exception as e:
                         print(f"Error while looking for ID field: {e}")
                     
                     # === חיפוש תאריך לידה ===
                     try:
-                        if birth_date_field in custom_fields:
-                            field_value = custom_fields[birth_date_field]
+                        if "ab7c49cd143665a08d4f4d24fcd33a5597c003fd" in custom_fields:
+                            field_value = custom_fields["ab7c49cd143665a08d4f4d24fcd33a5597c003fd"]
                             if field_value:
                                 birth_date_raw = str(field_value)
                                 print(f"Raw birth date: {birth_date_raw}")
                                 try:
                                     birth_date_obj = parser.parse(birth_date_raw)
                                     birth_date = birth_date_obj.strftime("%d/%m/%Y")
-                                    print(f"Found birth date from specific field {birth_date_field}: {birth_date}")
+                                    print(f"Found birth date from specific field ab7c49cd143665a08d4f4d24fcd33a5597c003fd: {birth_date}")
                                 except Exception as e:
                                     print(f"Error parsing birth date: {e}, using raw value")
                                     birth_date = birth_date_raw
                             else:
-                                print(f"Field {birth_date_field} exists but value is empty or None")
+                                print(f"Field ab7c49cd143665a08d4f4d24fcd33a5597c003fd exists but value is empty or None")
                         else:
-                            print(f"Field {birth_date_field} not found in custom_fields")
+                            print(f"Field ab7c49cd143665a08d4f4d24fcd33a5597c003fd not found in custom_fields")
                             # מציאת מפתחות דומים אם המפתח המדויק לא נמצא
                             for key in custom_fields.keys():
-                                if birth_date_field[:8] in key:
+                                if "ab7c49cd143665a08d4f4d24fcd33a5597c003fd"[:8] in key:
                                     print(f"Found similar birth date field key: {key}")
                     except Exception as e:
                         print(f"Error while looking for birth date field: {e}")
                     
                     # === חיפוש מספר ילדים ===
                     try:
-                        if children_field in custom_fields:
-                            field_value = custom_fields[children_field]
+                        if "62c775c3816aa805892280fad530d42bc1813512" in custom_fields:
+                            field_value = custom_fields["62c775c3816aa805892280fad530d42bc1813512"]
                             if field_value:
                                 children_number = str(field_value)
-                                print(f"Found children number from specific field {children_field}: {children_number}")
+                                print(f"Found children number from specific field 62c775c3816aa805892280fad530d42bc1813512: {children_number}")
                             else:
-                                print(f"Field {children_field} exists but value is empty or None")
+                                print(f"Field 62c775c3816aa805892280fad530d42bc1813512 exists but value is empty or None")
                         else:
-                            print(f"Field {children_field} not found in custom_fields")
+                            print(f"Field 62c775c3816aa805892280fad530d42bc1813512 not found in custom_fields")
                             # מציאת מפתחות דומים אם המפתח המדויק לא נמצא
                             for key in custom_fields.keys():
-                                if children_field[:8] in key:
+                                if "62c775c3816aa805892280fad530d42bc1813512"[:8] in key:
                                     print(f"Found similar children field key: {key}")
                     except Exception as e:
                         print(f"Error while looking for children field: {e}")
                     
                     # === חיפוש מצב משפחתי ===
                     try:
-                        if marital_field in custom_fields:
-                            field_value = custom_fields[marital_field]
+                        if "e54db6d7f2d66f2b568ab5debf077fa27622bf38" in custom_fields:
+                            field_value = custom_fields["e54db6d7f2d66f2b568ab5debf077fa27622bf38"]
                             if field_value:
                                 marital_status = str(field_value)
-                                print(f"Found marital status from specific field {marital_field}: {marital_status}")
+                                print(f"Found marital status from specific field e54db6d7f2d66f2b568ab5debf077fa27622bf38: {marital_status}")
                             else:
-                                print(f"Field {marital_field} exists but value is empty or None")
+                                print(f"Field e54db6d7f2d66f2b568ab5debf077fa27622bf38 exists but value is empty or None")
                         else:
-                            print(f"Field {marital_field} not found in custom_fields")
+                            print(f"Field e54db6d7f2d66f2b568ab5debf077fa27622bf38 not found in custom_fields")
                             # מציאת מפתחות דומים אם המפתח המדויק לא נמצא
                             for key in custom_fields.keys():
-                                if marital_field[:8] in key:
+                                if "e54db6d7f2d66f2b568ab5debf077fa27622bf38"[:8] in key:
                                     print(f"Found similar marital field key: {key}")
                     except Exception as e:
                         print(f"Error while looking for marital field: {e}")
@@ -566,7 +523,7 @@ async def create_deal_form_activity(deal_id, deal_data):
                     
                     # מניעת חיפוש כללי יותר, כי כבר יש לנו את הערכים המדוייקים
                     
-                    # חיפוש מספר תעודת זהות
+                    # === חיפוש מספר תעודת זהות ===
                     for field_key, field_value in custom_fields.items():
                         if field_value and ("\u05de\u05e1\u05e4\u05e8 \u05ea\u05e2\u05d5\u05d3\u05ea \u05d6\u05d4\u05d5\u05ea" in str(field_key).lower() or 
                                           "id" in str(field_key).lower() or 
@@ -621,30 +578,47 @@ async def create_deal_form_activity(deal_id, deal_data):
             except Exception as e:
                 print(f"Error fetching person details: {e}")
                 
-        # בדיקה ישירה של מזהים ספציפיים בפייפדרייב
-        if not id_number and "298a5a71694995d831cd85c12084b71714234057" in custom_fields and custom_fields["298a5a71694995d831cd85c12084b71714234057"]:
-            raw_id = str(custom_fields["298a5a71694995d831cd85c12084b71714234057"])
-            id_number = ''.join(c for c in raw_id if c.isdigit())
-            print(f"Direct field access: Found ID: {id_number}")
+        # בדיקה ישירה של מזהים ספציפיים בפייפדרייב (בכל השדות שמצאנו)
+        # ת.ז
+        id_field_keys = ["298a5a71694995d831cd85c12084b71714234057", "ba54a5a219e788e260dc012a6b483bbfaa8f7e52"]
+        for key in id_field_keys:
+            if not id_number and key in all_fields:
+                raw_id = str(all_fields[key])
+                id_number = ''.join(c for c in raw_id if c.isdigit())
+                print(f"Direct field access: Found ID: {id_number} from key {key}")
+                break
         
-        if not birth_date and "ab7c49cd143665a08d4f4d24fcd33a5597c003fd" in custom_fields and custom_fields["ab7c49cd143665a08d4f4d24fcd33a5597c003fd"]:
-            try:
-                birth_date_raw = str(custom_fields["ab7c49cd143665a08d4f4d24fcd33a5597c003fd"])
-                birth_date_obj = parser.parse(birth_date_raw)
-                birth_date = birth_date_obj.strftime("%d/%m/%Y")
-                print(f"Direct field access: Found birth date: {birth_date}")
-            except Exception as e:
-                print(f"Error parsing direct birth date: {e}")
-                birth_date = birth_date_raw
-                print(f"Using raw birth date: {birth_date}")
+        # תאריך לידה
+        birth_date_keys = ["ab7c49cd143665a08d4f4d24fcd33a5597c003fd", "BB-DATHE"]
+        for key in birth_date_keys:
+            if not birth_date and key in all_fields:
+                try:
+                    birth_date_raw = str(all_fields[key])
+                    birth_date_obj = parser.parse(birth_date_raw)
+                    birth_date = birth_date_obj.strftime("%d/%m/%Y")
+                    print(f"Direct field access: Found birth date: {birth_date} from key {key}")
+                    break
+                except Exception as e:
+                    print(f"Error parsing direct birth date from key {key}: {e}")
+                    birth_date = birth_date_raw
+                    print(f"Using raw birth date: {birth_date}")
+                    break
         
-        if not children_number and "62c775c3816aa805892280fad530d42bc1813512" in custom_fields and custom_fields["62c775c3816aa805892280fad530d42bc1813512"]:
-            children_number = str(custom_fields["62c775c3816aa805892280fad530d42bc1813512"])
-            print(f"Direct field access: Found children number: {children_number}")
-            
-        if not marital_status and "e54db6d7f2d66f2b568ab5debf077fa27622bf38" in custom_fields and custom_fields["e54db6d7f2d66f2b568ab5debf077fa27622bf38"]:
-            marital_status = str(custom_fields["e54db6d7f2d66f2b568ab5debf077fa27622bf38"])
-            print(f"Direct field access: Found marital status: {marital_status}")
+        # מספר ילדים
+        children_keys = ["62c775c3816aa805892280fad530d42bc1813512", "typeA23"]
+        for key in children_keys:
+            if not children_number and key in all_fields:
+                children_number = str(all_fields[key])
+                print(f"Direct field access: Found children number: {children_number} from key {key}")
+                break
+        
+        # מצב משפחתי
+        marital_keys = ["e54db6d7f2d66f2b568ab5debf077fa27622bf38", "input107", "typeA21"]
+        for key in marital_keys:
+            if not marital_status and key in all_fields:
+                marital_status = str(all_fields[key])
+                print(f"Direct field access: Found marital status: {marital_status} from key {key}")
+                break
             
         # וידוא שכל הערכים מומרים למחרוזות או ריקים
         first_name = str(first_name) if first_name is not None else ""
