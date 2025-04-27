@@ -351,9 +351,15 @@ async def create_deal_form_activity(deal_id, deal_data):
         print(f"Checking if deal title '{title}' matches any of our form types...")
         print(f"Available form types: {', '.join(DEAL_TYPE_TO_FORM.keys())}")
         
+        # זיהוי משופר של סוג העסקה
+        title_lower = title.lower()
+        
         for deal_type_key in DEAL_TYPE_TO_FORM.keys():
-            print(f"Checking if '{deal_type_key}' is in '{title}'")
-            if deal_type_key in title:
+            print(f"Checking if '{deal_type_key}' appears in '{title}'")
+            # בדיקה גמישה יותר
+            if deal_type_key.lower() in title_lower or \
+               f"בדיקת {deal_type_key.lower()}" in title_lower or \
+               f"שאלון {deal_type_key.lower()}" in title_lower:
                 deal_type = deal_type_key
                 print(f"MATCH FOUND! Deal type: {deal_type}")
                 break
