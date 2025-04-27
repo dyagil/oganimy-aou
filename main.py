@@ -96,6 +96,13 @@ def create_jotform_task(person_id, field_value):
         print(f"Extracted person details: {first_name} {last_name}, phone: {phone}, email: {email}, client_code: {client_code}")
         
         # יצירת קישור לטופס JotForm עם שמות פרמטרים נכונים
+        # הבטחת שכל הערכים הם מחרוזות או ריקים
+        first_name = str(first_name) if first_name is not None else ""
+        last_name = str(last_name) if last_name is not None else ""
+        phone = str(phone) if phone is not None else ""
+        email = str(email) if email is not None else ""
+        client_code = str(client_code) if client_code is not None else ""
+        
         jotform_link = f"{JOTFORM_URL}?name={urllib.parse.quote(first_name)}&Lname={urllib.parse.quote(last_name)}&phone={urllib.parse.quote(phone)}&email={urllib.parse.quote(email)}&typeA9={client_code}"
         print(f"Original JotForm link: {jotform_link}")
         
