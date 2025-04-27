@@ -377,6 +377,30 @@ async def create_deal_form_activity(deal_id, deal_data):
         jotform_url = f"https://form.jotform.com/{form_id}?dealId={deal_id_str}&personId={person_id_str}"
         print(f"Generated form URL: {jotform_url}")
         
+        # קיצור הקישור באמצעות Bitly
+        try:
+            bitly_url = "https://api-ssl.bitly.com/v4/shorten"
+            payload = {
+                "long_url": jotform_url
+            }
+            headers = {
+                "Authorization": f"Bearer {BITLY_ACCESS_TOKEN}",
+                "Content-Type": "application/json"
+            }
+            
+            bitly_response = requests.post(bitly_url, json=payload, headers=headers, timeout=10)
+            
+            if bitly_response.status_code == 200 or bitly_response.status_code == 201:
+                shortened_url = bitly_response.json().get("link")
+                print(f"Shortened URL with Bitly: {shortened_url}")
+                jotform_url = shortened_url
+            else:
+                print(f"Failed to shorten URL with Bitly. Status code: {bitly_response.status_code}")
+                print(f"Response: {bitly_response.text[:200]}")
+        except Exception as e:
+            print(f"Error shortening URL with Bitly: {str(e)}")
+            # במקרה של שגיאה, נשתמש בקישור המקורי
+        
         # בדיקה אם כבר יצרנו פעילות כזו לעסקה זו
         activity_key = f"deal_form_{deal_id}_{form_id}"
         if activity_key in task_history:
