@@ -481,13 +481,13 @@ async def create_deal_form_activity(deal_id, deal_data):
         
         # יצירת פעילות חדשה בפייפדרייב
         activity_data = {
-            "subject": f"שאלון {form_name} ל{person_name}",
+            "subject": f"שאלון להחזר מס ל{person_name}",  # שימוש בערך ישיר במקום form_name למניעת כפל
             "type": "task",
             "due_date": (datetime.now() + timedelta(days=3)).strftime('%Y-%m-%d'),
             "due_time": "12:00",
             "deal_id": deal_id,
             "person_id": person_id,
-            "note": f"קישור לשאלון {form_name}: {jotform_url}",
+            "note": f"קישור לשאלון החזר מס: {jotform_url}",  # שימוש בערך ישיר במקום form_name
         }
         
         print(f"Creating activity with data: {json.dumps(activity_data)}")
