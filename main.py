@@ -374,7 +374,15 @@ async def create_deal_form_activity(deal_id, deal_data):
         deal_id_str = str(deal_id) if deal_id is not None else ""
         person_id_str = str(person_id) if person_id is not None else ""
         
-        jotform_url = f"https://form.jotform.com/{form_id}?dealId={deal_id_str}&personId={person_id_str}"
+        # וידוא שכל הערכים מומרים למחרוזות או ריקים
+        first_name = str(first_name) if first_name is not None else ""
+        last_name = str(last_name) if last_name is not None else ""
+        phone = str(phone) if phone is not None else ""
+        email = str(email) if email is not None else ""
+        id_number = str(id_number) if id_number is not None else ""
+        
+        # יצירת קישור לשאלון עם כל הפרטים שחילצנו
+        jotform_url = f"https://form.jotform.com/{form_id}?dealId={deal_id_str}&personId={person_id_str}&firstName={urllib.parse.quote(first_name)}&lastName={urllib.parse.quote(last_name)}&phone={urllib.parse.quote(phone)}&email={urllib.parse.quote(email)}&idNumber={urllib.parse.quote(id_number)}"
         print(f"Generated form URL: {jotform_url}")
         
         # קיצור הקישור באמצעות Bitly
@@ -409,6 +417,12 @@ async def create_deal_form_activity(deal_id, deal_data):
         
         # קבלת פרטי הלקוח מפייפדרייב
         person_name = "לקוח"
+        first_name = ""
+        last_name = ""
+        phone = ""
+        email = ""
+        id_number = ""
+        
         if person_id:
             try:
                 print(f"Fetching person details for person_id: {person_id}")
@@ -416,8 +430,31 @@ async def create_deal_form_activity(deal_id, deal_data):
                 response = requests.get(person_url)
                 if response.status_code == 200:
                     person_data = response.json().get("data", {})
-                    person_name = person_data.get("name", "לקוח")
-                    print(f"Retrieved person name: {person_name}")
+                    
+                    # חילוץ פרטי איש הקשר בצורה בטוחה
+                    first_name = person_data.get("first_name", "")
+                    last_name = person_data.get("last_name", "")
+                    person_name = f"{first_name} {last_name}".strip() or "לקוח"
+                    
+                    # פרטי התקשרות
+                    if person_data.get("phone") and len(person_data.get("phone", [])) > 0:
+                        phone = person_data.get("phone", [{}])[0].get("value", "")
+                    
+                    if person_data.get("email") and len(person_data.get("email", [])) > 0:
+                        email = person_data.get("email", [{}])[0].get("value", "")
+                    
+                    # ניסיון לחלץ מספר תעודת זהות משדות מותאמים אישית
+                    custom_fields = person_data.get("custom_fields", {})
+                    for field_key, field_value in custom_fields.items():
+                        # ניסיון למצוא שדה שמכיל מספר תעודת זהות
+                        if field_value and ("\u05de\u05e1\u05e4\u05e8 \u05ea\u05e2\u05d5\u05d3\u05ea \u05d6\u05d4\u05d5\u05ea" in str(field_key).lower() or 
+                                          "id" in str(field_key).lower() or 
+                                          "\u05ea\u05d6" in str(field_key).lower()):
+                            id_number = str(field_value)
+                            print(f"Found ID number: {id_number}")
+                            break
+                    
+                    print(f"Retrieved person details: {first_name} {last_name}, phone: {phone}, email: {email}, id: {id_number}")
                 else:
                     print(f"Failed to get person details: {response.status_code}")
             except Exception as e:
