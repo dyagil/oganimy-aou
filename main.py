@@ -425,8 +425,11 @@ async def create_deal_form_activity(deal_id, deal_data):
                         if field_value and ("\u05de\u05e1\u05e4\u05e8 \u05ea\u05e2\u05d5\u05d3\u05ea \u05d6\u05d4\u05d5\u05ea" in str(field_key).lower() or 
                                           "id" in str(field_key).lower() or 
                                           "\u05ea\u05d6" in str(field_key).lower()):
-                            id_number = str(field_value)
-                            print(f"Found ID number: {id_number}")
+                            # ניקוי המספר - הסרת רווחים, מקפים ותווים מיוחדים
+                            raw_id = str(field_value) if field_value else ""
+                            # שומר רק את הספרות במספר
+                            id_number = ''.join(c for c in raw_id if c.isdigit())
+                            print(f"Found ID number: {id_number} (original: {raw_id})")
                             break
                     
                     # חיפוש תאריך לידה
@@ -435,13 +438,15 @@ async def create_deal_form_activity(deal_id, deal_data):
                                           "birth date" in str(field_key).lower() or 
                                           "birthday" in str(field_key).lower() or
                                           "date of birth" in str(field_key).lower()):
-                            # המרת תאריך לפורמט הנכון אם אפשר
+                            # המרת תאריך לפורמט הנכון לג'וטפורם - נסיון עם כמה פורמטים
                             try:
                                 birth_date_obj = parser.parse(str(field_value)) if field_value else None
                                 if birth_date_obj:
-                                    birth_date = birth_date_obj.strftime("%Y-%m-%d")
+                                    # ניסיון עם פורמט MM/DD/YYYY שנפוץ בג'וטפורם
+                                    birth_date = birth_date_obj.strftime("%m/%d/%Y")
                                     print(f"Found birth date: {birth_date}")
                             except:
+                                # אם התאריך כבר בפורמט חוקי, משאיר אותו כמו שהוא
                                 birth_date = str(field_value)
                                 print(f"Found birth date (as string): {birth_date}")
                             break
