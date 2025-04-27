@@ -621,6 +621,31 @@ async def create_deal_form_activity(deal_id, deal_data):
             except Exception as e:
                 print(f"Error fetching person details: {e}")
                 
+        # בדיקה ישירה של מזהים ספציפיים בפייפדרייב
+        if not id_number and "298a5a71694995d831cd85c12084b71714234057" in custom_fields and custom_fields["298a5a71694995d831cd85c12084b71714234057"]:
+            raw_id = str(custom_fields["298a5a71694995d831cd85c12084b71714234057"])
+            id_number = ''.join(c for c in raw_id if c.isdigit())
+            print(f"Direct field access: Found ID: {id_number}")
+        
+        if not birth_date and "ab7c49cd143665a08d4f4d24fcd33a5597c003fd" in custom_fields and custom_fields["ab7c49cd143665a08d4f4d24fcd33a5597c003fd"]:
+            try:
+                birth_date_raw = str(custom_fields["ab7c49cd143665a08d4f4d24fcd33a5597c003fd"])
+                birth_date_obj = parser.parse(birth_date_raw)
+                birth_date = birth_date_obj.strftime("%d/%m/%Y")
+                print(f"Direct field access: Found birth date: {birth_date}")
+            except Exception as e:
+                print(f"Error parsing direct birth date: {e}")
+                birth_date = birth_date_raw
+                print(f"Using raw birth date: {birth_date}")
+        
+        if not children_number and "62c775c3816aa805892280fad530d42bc1813512" in custom_fields and custom_fields["62c775c3816aa805892280fad530d42bc1813512"]:
+            children_number = str(custom_fields["62c775c3816aa805892280fad530d42bc1813512"])
+            print(f"Direct field access: Found children number: {children_number}")
+            
+        if not marital_status and "e54db6d7f2d66f2b568ab5debf077fa27622bf38" in custom_fields and custom_fields["e54db6d7f2d66f2b568ab5debf077fa27622bf38"]:
+            marital_status = str(custom_fields["e54db6d7f2d66f2b568ab5debf077fa27622bf38"])
+            print(f"Direct field access: Found marital status: {marital_status}")
+            
         # וידוא שכל הערכים מומרים למחרוזות או ריקים
         first_name = str(first_name) if first_name is not None else ""
         last_name = str(last_name) if last_name is not None else ""
@@ -639,10 +664,22 @@ async def create_deal_form_activity(deal_id, deal_data):
             f"name={urllib.parse.quote(first_name)}&" + \
             f"Lname={urllib.parse.quote(last_name)}&" + \
             f"phoneNumber={urllib.parse.quote(phone)}&" + \
-            f"typeA={urllib.parse.quote(id_number)}&" + \
+            f"input109={urllib.parse.quote(id_number)}&" + \
             f"input117={urllib.parse.quote(birth_date)}&" + \
-            f"typeA21={urllib.parse.quote(marital_status)}&" + \
+            f"input107={urllib.parse.quote(marital_status)}&" + \
             f"typeA23={urllib.parse.quote(children_number)}"
+            
+        # הוספת לוגים מפורטים לכל הפרמטרים - חשוב לדיבוג
+        print(f"JotForm parameters used:")
+        print(f"- Deal ID (typeA8): {deal_id_str}")
+        print(f"- Person ID (typeA9): {person_id_str}")
+        print(f"- First Name (name): {first_name}")
+        print(f"- Last Name (Lname): {last_name}")
+        print(f"- Phone (phoneNumber): {phone}")
+        print(f"- ID Number (input109): {id_number}")
+        print(f"- Birth Date (input117): {birth_date}")
+        print(f"- Marital Status (input107): {marital_status}")
+        print(f"- Children Number (typeA23): {children_number}")
         print(f"Generated form URL: {jotform_url}")
         
         # קיצור הקישור באמצעות Bitly
