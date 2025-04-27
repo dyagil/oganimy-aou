@@ -381,8 +381,8 @@ async def create_deal_form_activity(deal_id, deal_data):
         email = str(email) if email is not None else ""
         id_number = str(id_number) if id_number is not None else ""
         
-        # יצירת קישור לשאלון עם כל הפרטים שחילצנו
-        jotform_url = f"https://form.jotform.com/{form_id}?dealId={deal_id_str}&personId={person_id_str}&firstName={urllib.parse.quote(first_name)}&lastName={urllib.parse.quote(last_name)}&phone={urllib.parse.quote(phone)}&email={urllib.parse.quote(email)}&idNumber={urllib.parse.quote(id_number)}"
+        # יצירת קישור לשאלון עם כל הפרטים שחילצנו ושמות הפרמטרים המתאימים לטופס
+        jotform_url = f"https://form.jotform.com/{form_id}?input_51={deal_id_str}&input_52={person_id_str}&input_4={urllib.parse.quote(first_name)}&input_53={urllib.parse.quote(last_name)}&input_6={urllib.parse.quote(phone)}&input_5={urllib.parse.quote(id_number)}"
         print(f"Generated form URL: {jotform_url}")
         
         # קיצור הקישור באמצעות Bitly
