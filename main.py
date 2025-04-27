@@ -164,14 +164,18 @@ def create_jotform_task(person_id, field_value):
             deal_id = None
             print(f"Error fetching deals: {e}")
             
-        # הכנת המשימה
+        # הכנת המשימה עם כל השדות הנדרשים להצגת הקישור
         task_payload = {
             "subject": f"שאלון תחומים ל{first_name} {last_name}",
             "type": "task",
             "due_date": (datetime.now() + timedelta(days=3)).strftime('%Y-%m-%d'),
             "due_time": "12:00",
             "person_id": person_id,
-            "public_description": f"אנא שלח ללקוח את הקישור לשאלון תחומים לצורך המשך הטיפול\n\nקישור לשאלון: {jotform_link}",
+            # שימוש בכל השדות האפשריים להצגת הקישור
+            "content": f"קישור לשאלון: {jotform_link}",
+            "note": f"קישור לשאלון תחומים: {jotform_link}",
+            "description": f"אנא שלח ללקוח את הקישור לשאלון תחומים לצורך המשך הטיפול\n\nקישור לשאלון: {jotform_link}",
+            "public_description": f"קישור לשאלון: {jotform_link}",
         }
         
         # הוספת מזהה עסקה אם נמצא
@@ -399,7 +403,7 @@ async def create_deal_form_activity(deal_id, deal_data):
             except Exception as e:
                 print(f"Error fetching person details: {e}")
         
-        # יצירת פעילות חדשה בפייפדרייב
+        # יצירת פעילות חדשה בפייפדרייב עם כל השדות הנדרשים להצגת הקישור
         activity_data = {
             "subject": f"שאלון {form_name} ל{person_name}",
             "type": "task",
@@ -407,7 +411,11 @@ async def create_deal_form_activity(deal_id, deal_data):
             "due_time": "12:00",
             "deal_id": deal_id,
             "person_id": person_id,
-            "public_description": f"אנא שלח ללקוח את הקישור לשאלון {form_name} לצורך המשך הטיפול\n\nקישור לשאלון: {jotform_url}",
+            # שימוש בכל השדות האפשריים להצגת הקישור
+            "content": f"קישור לשאלון: {jotform_url}",
+            "note": f"קישור לשאלון {form_name}: {jotform_url}",
+            "description": f"אנא שלח ללקוח את הקישור לשאלון {form_name} לצורך המשך הטיפול\n\nקישור לשאלון: {jotform_url}",
+            "public_description": f"קישור לשאלון: {jotform_url}",
         }
         
         print(f"Creating activity with data: {json.dumps(activity_data)}")
