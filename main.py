@@ -632,16 +632,28 @@ async def create_deal_form_activity(deal_id, deal_data):
         
         # יצירת קישור לשאלון עם הפרמטרים הנכונים לטופס JotForm
         # שימוש בשמות הפרמטרים המדויקים כפי שמופיעים בטופס JotForm
+        # שימוש בכל האפשרויות של שמות שדות כדי להבטיח שהנתונים יעברו כראוי
         jotform_url = f"https://form.jotform.com/{form_id}?" + \
             f"typeA8={deal_id_str}&" + \
             f"typeA9={person_id_str}&" + \
             f"name={urllib.parse.quote(first_name)}&" + \
             f"Lname={urllib.parse.quote(last_name)}&" + \
-            f"phoneNumber={urllib.parse.quote(phone)}&" + \
-            f"input109={urllib.parse.quote(id_number)}&" + \
-            f"input117={urllib.parse.quote(birth_date)}&" + \
-            f"input107={urllib.parse.quote(marital_status)}&" + \
-            f"typeA23={urllib.parse.quote(children_number)}"
+            f"phoneNumber={urllib.parse.quote(phone)}&"
+
+        # הוספת מספר תעודת זהות בכל האפשרויות
+        jotform_url += f"input109={urllib.parse.quote(id_number)}&" + \
+                     f"typeA={urllib.parse.quote(id_number)}&"
+
+        # הוספת תאריך לידה בכל האפשרויות
+        jotform_url += f"input117={urllib.parse.quote(birth_date)}&" + \
+                     f"BB-DATHE={urllib.parse.quote(birth_date)}&"
+
+        # הוספת מצב משפחתי בכל האפשרויות
+        jotform_url += f"input107={urllib.parse.quote(marital_status)}&" + \
+                     f"typeA21={urllib.parse.quote(marital_status)}&"
+
+        # הוספת מספר ילדים בכל האפשרויות
+        jotform_url += f"typeA23={urllib.parse.quote(children_number)}"
             
         # הוספת לוגים מפורטים לכל הפרמטרים - חשוב לדיבוג
         print(f"JotForm parameters used:")
