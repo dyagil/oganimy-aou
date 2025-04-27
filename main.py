@@ -459,6 +459,57 @@ async def create_deal_form_activity(deal_id, deal_data):
                             print(f"Field: {field_key} = {field_value}")
                     print("=== END OF REGULAR FIELDS ===")
                     
+                    # חיפוש לפי מזהים ספציפיים שמצאנו בלוג
+                    
+                    # חיפוש תעודת זהות - המזהה הספציפי שראינו בלוג
+                    id_fields = [
+                        "298a5a71694995d831cd85c12084b71714234057"  # מזהה שנמצא בלוג
+                    ]
+                    
+                    for field_id in id_fields:
+                        if field_id in custom_fields and custom_fields[field_id]:
+                            raw_id = str(custom_fields[field_id])
+                            id_number = ''.join(c for c in raw_id if c.isdigit())
+                            print(f"Found ID from specific field {field_id}: {id_number}")
+                            break
+                    
+                    # חיפוש תאריך לידה - המזהה הספציפי שראינו בלוג
+                    birth_date_fields = [
+                        "ab7c49cd143665a08d4f4d24fcd33a5597c003fd"  # מזהה שנמצא בלוג
+                    ]
+                    
+                    for field_id in birth_date_fields:
+                        if field_id in custom_fields and custom_fields[field_id]:
+                            try:
+                                birth_date_raw = str(custom_fields[field_id])
+                                birth_date_obj = parser.parse(birth_date_raw)
+                                birth_date = birth_date_obj.strftime("%d/%m/%Y")
+                                print(f"Found birth date from specific field {field_id}: {birth_date}")
+                                break
+                            except Exception as e:
+                                print(f"Error parsing specific birth date from {field_id}: {e}")
+                    
+                    # חיפוש מספר ילדים - המזהה הספציפי שראינו בלוג
+                    children_fields = [
+                        "62c775c3816aa805892280fad530d42bc1813512"  # מזהה שנמצא בלוג
+                    ]
+                    
+                    for field_id in children_fields:
+                        if field_id in custom_fields and custom_fields[field_id]:
+                            children_number = str(custom_fields[field_id])
+                            print(f"Found children number from specific field {field_id}: {children_number}")
+                            break
+                    
+                    # חיפוש מצב משפחתי - לא ראינו את המזהה בלוג, אבל אנחנו מחפשים שדות שיכולים להיות המצב המשפחתי
+                    marital_values = ["נשוי", "רווק", "גרוש", "אלמן", "נשואה", "רווקה", "גרושה", "אלמנה"]
+                    
+                    # בדיקת כל השדות המותאמים אישית לחיפוש שדה שעשוי להיות מצב משפחתי
+                    for field_id, value in custom_fields.items():
+                        if value and str(value) in marital_values:
+                            marital_status = str(value)
+                            print(f"Found marital status from field {field_id}: {marital_status}")
+                            break
+                    
                     # חיפוש מספר תעודת זהות
                     for field_key, field_value in custom_fields.items():
                         if field_value and ("\u05de\u05e1\u05e4\u05e8 \u05ea\u05e2\u05d5\u05d3\u05ea \u05d6\u05d4\u05d5\u05ea" in str(field_key).lower() or 
