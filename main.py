@@ -439,7 +439,20 @@ async def create_deal_form_activity(deal_id, deal_data):
         id_number = str(id_number) if id_number is not None else ""
         
         # יצירת קישור לשאלון עם כל הפרטים שחילצנו ושמות הפרמטרים המתאימים לטופס
-        jotform_url = f"https://form.jotform.com/{form_id}?input_51={deal_id_str}&input_52={person_id_str}&input_4={urllib.parse.quote(first_name)}&input_53={urllib.parse.quote(last_name)}&input_6={urllib.parse.quote(phone)}&input_5={urllib.parse.quote(id_number)}"
+        # ניסיון של פורמטים שונים שיכולים להתאים ל-JotForm
+        jotform_url = f"https://form.jotform.com/{form_id}?" + \
+            f"dealId={deal_id_str}&" + \
+            f"personId={person_id_str}&" + \
+            f"input_51={deal_id_str}&" + \
+            f"input_52={person_id_str}&" + \
+            f"input_4={urllib.parse.quote(first_name)}&" + \
+            f"input_53={urllib.parse.quote(last_name)}&" + \
+            f"input_6={urllib.parse.quote(phone)}&" + \
+            f"input_5={urllib.parse.quote(id_number)}&" + \
+            f"q4_firstName={urllib.parse.quote(first_name)}&" + \
+            f"q53_lastName={urllib.parse.quote(last_name)}&" + \
+            f"q6_phoneNumber={urllib.parse.quote(phone)}&" + \
+            f"q5_idNumber={urllib.parse.quote(id_number)}"
         print(f"Generated form URL: {jotform_url}")
         
         # קיצור הקישור באמצעות Bitly
