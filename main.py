@@ -30,6 +30,40 @@ DEAL_TYPE_TO_FORM = {
     # ניתן להוסיף עוד סוגי עסקאות ושאלונים כאן
 }
 
+# מילון לתרגום שמות שדות משאלון המס לשדות המתאימים בפייפדרייב
+TAX_FORM_FIELD_MAPPING = {
+    # נתונים אישיים
+    "input18": "מין",
+    "input118": "מין",
+    "input109": "מספר תעודת זהות",
+    "input117": "תאריך לידה",
+    "input107": "מצב משפחתי",
+    
+    # נדל"ן ומשכנתאות
+    "input89": "יש דירה בבעלות",
+    "input90": "יש משכנתה פעילה",
+    "input91": "מעוניין במשכנתא הפוכה",
+    "input92": "מעוניין בדירה",
+    
+    # ייעוץ פיננסי וביטוח
+    "input66": "מעוניין בייעוץ פיננסי פנסיוני",
+    "input93": "מעוניין בייעוץ פרישה",
+    "input94": "מעוניין בבדיקת ביטוחים",
+    "input67": "מעוניין בבדיקה מול ביטוח לאומי",
+    "input96": "מעוניין בבדיקה מול ביטוח לאומי",
+    
+    # שונות
+    "input123": "נוסע לחו\"ל בחצי שנה הקרובה"
+}
+
+# מילון לתרגום קטגוריות בפתק בפייפדרייב
+TAX_FORM_CATEGORIES = {
+    "נתונים אישיים": ["input18", "input118", "input109", "input117", "input107"],
+    "נדל\"ן ומשכנתאות": ["input89", "input90", "input91", "input92"],
+    "ייעוץ פיננסי וביטוח": ["input66", "input93", "input94", "input67", "input96"],
+    "שונות": ["input123"]
+}
+
 class ActivitiesManager:
     def __init__(self):
         pass
@@ -374,7 +408,127 @@ async def create_deal_form_activity(deal_id, deal_data):
         deal_id_str = str(deal_id) if deal_id is not None else ""
         person_id_str = str(person_id) if person_id is not None else ""
         
-        jotform_url = f"https://form.jotform.com/{form_id}?dealId={deal_id_str}&personId={person_id_str}"
+        # בדיקה אם יש מידע נוסף שאפשר להעביר לשאלון
+        first_name = ""
+        last_name = ""
+        phone = ""
+        email = ""
+        id_number = ""
+        birth_date = ""
+        children_number = ""
+        marital_status = ""
+        
+        # אם יש מזהה איש קשר, ננסה להשיג את הפרטים שלו
+        if person_id:
+            try:
+                print(f"Fetching person details for person_id: {person_id}")
+                person_url = f"https://api.pipedrive.com/v1/persons/{person_id}?api_token={PIPEDRIVE_API_KEY}"
+                response = requests.get(person_url)
+                if response.status_code == 200:
+                    person_data = response.json().get("data", {})
+                    
+                    # חילוץ פרטי איש הקשר בצורה בטוחה
+                    first_name = person_data.get("first_name", "")
+                    last_name = person_data.get("last_name", "")
+                    
+                    # פרטי התקשרות
+                    if person_data.get("phone") and len(person_data.get("phone", [])) > 0:
+                        phone = person_data.get("phone", [{}])[0].get("value", "")
+                    if person_data.get("email") and len(person_data.get("email", [])) > 0:
+                        email = person_data.get("email", [{}])[0].get("value", "")
+                    
+                    # חיפוש שדות בהתאמה אישית
+                    custom_fields = {}
+                    if "custom_fields" in person_data and isinstance(person_data["custom_fields"], dict):
+                        custom_fields = person_data["custom_fields"]
+                    elif "custom_fields" in person_data and isinstance(person_data["custom_fields"], list):
+                        for field in person_data["custom_fields"]:
+                            if "key" in field and "value" in field:
+                                custom_fields[field["key"]] = field["value"]
+                    
+                    # חיפוש שדות נוספים רלוונטיים
+                    id_fields = ["id_number", "idNumber", "tz", "teudat_zehut", "teudatZehut"]
+                    for field in id_fields:
+                        if field in custom_fields and custom_fields[field]:
+                            id_number = str(custom_fields[field])
+                            print(f"Found ID number: {id_number} from field {field}")
+                            break
+                    
+                    birth_date_fields = ["birth_date", "birthDate", "dateOfBirth", "date_of_birth"]
+                    for field in birth_date_fields:
+                        if field in custom_fields and custom_fields[field]:
+                            birth_date = str(custom_fields[field])
+                            print(f"Found birth date: {birth_date} from field {field}")
+                            break
+                    
+                    marital_status_fields = ["marital_status", "maritalStatus", "family_status", "familyStatus"]
+                    for field in marital_status_fields:
+                        if field in custom_fields and custom_fields[field]:
+                            marital_status = str(custom_fields[field])
+                            print(f"Found marital status: {marital_status} from field {field}")
+                            break
+                    
+                    children_fields = ["children", "children_number", "childrenNumber", "num_children", "numChildren"]
+                    for field in children_fields:
+                        if field in custom_fields and custom_fields[field]:
+                            children_number = str(custom_fields[field])
+                            print(f"Found children number: {children_number} from field {field}")
+                            break
+                else:
+                    print(f"Failed to get person details: {response.status_code}")
+            except Exception as e:
+                print(f"Error fetching person details: {e}")
+        
+        # וידוא שכל הערכים מומרים למחרוזות או ריקים
+        first_name = str(first_name) if first_name is not None else ""
+        last_name = str(last_name) if last_name is not None else ""
+        phone = str(phone) if phone is not None else ""
+        email = str(email) if email is not None else ""
+        id_number = str(id_number) if id_number is not None else ""
+        birth_date = str(birth_date) if birth_date is not None else ""
+        children_number = str(children_number) if children_number is not None else ""
+        marital_status = str(marital_status) if marital_status is not None else ""
+        
+        # יצירת קישור לשאלון עם הפרמטרים הנכונים לטופס JotForm
+        # שימוש בשמות הפרמטרים המדויקים כפי שמופיעים בטופס JotForm
+        # שימוש בכל האפשרויות של שמות שדות כדי להבטיח שהנתונים יעברו כראוי
+        jotform_url = f"https://form.jotform.com/{form_id}?" + \
+            f"typeA8={deal_id_str}&" + \
+            f"typeA9={person_id_str}&" + \
+            f"name={urllib.parse.quote(first_name)}&" + \
+            f"Lname={urllib.parse.quote(last_name)}&" + \
+            f"phoneNumber={urllib.parse.quote(phone)}&"
+
+        # הוספת מספר תעודת זהות בכל האפשרויות
+        jotform_url += f"input109={urllib.parse.quote(id_number)}&" + \
+            f"typeA={urllib.parse.quote(id_number)}&" + \
+            f"idNumber={urllib.parse.quote(id_number)}&"
+
+        # הוספת דואר אלקטרוני
+        jotform_url += f"email={urllib.parse.quote(email)}&"
+
+        # הוספת תאריך לידה
+        jotform_url += f"input117={urllib.parse.quote(birth_date)}&" + \
+            f"BB-DATHE={urllib.parse.quote(birth_date)}&"
+
+        # הוספת מצב משפחתי
+        jotform_url += f"input107={urllib.parse.quote(marital_status)}&" + \
+            f"typeA21={urllib.parse.quote(marital_status)}&"
+
+        # הוספת מספר ילדים
+        jotform_url += f"typeA23={urllib.parse.quote(children_number)}&"
+
+        # הדפסת היררכית של כל הפרטים שהושגו
+        print("\nPrefilling form with the following data:")
+        print(f"- Deal ID (typeA8): {deal_id_str}")
+        print(f"- Person ID (typeA9): {person_id_str}")
+        print(f"- First Name (name): {first_name}")
+        print(f"- Last Name (Lname): {last_name}")
+        print(f"- Phone (phoneNumber): {phone}")
+        print(f"- ID Number (input109): {id_number}")
+        print(f"- Birth Date (input117): {birth_date}")
+        print(f"- Marital Status (input107): {marital_status}")
+        print(f"- Children Number (typeA23): {children_number}")
         print(f"Generated form URL: {jotform_url}")
         
         # קיצור הקישור באמצעות Bitly
@@ -603,25 +757,67 @@ async def handle_jotform_webhook(request: Request):
             if not key.startswith('_'):  # להתעלם ממטה-דאטה
                 shortened_value = str(value)[:100] + ('...' if len(str(value)) > 100 else '')
                 print(f"  {key}: {shortened_value}")
-            
-        # חילוץ מזהה הלקוח מהנתונים
-        client_id = None
-        if "typeA9" in submission_data and submission_data["typeA9"]:
-            client_id = submission_data["typeA9"]
-            print(f"Found client ID: {client_id}")
-        else:
-            print("Client ID not found in form data. Checking all fields:")
-            for field, value in submission_data.items():
-                print(f"Field: {field}, Value: {value}")
-            return {"status": "error", "message": "Client ID not found in submission data"}
-            
-        # עדכון כרטיס הלקוח בפייפדרייב
-        success = await update_pipedrive_person(client_id, submission_data)
         
-        if success:
-            return {"status": "success", "message": "Person updated in Pipedrive"}
+        # בדיקה אם זה שאלון מס
+        is_tax_form = is_tax_form_submission(submission_data)
+        print(f"Is tax form submission: {is_tax_form}")
+        
+        if is_tax_form:
+            # אם זה שאלון מס, צריך לחפש את מזהה העסקה (deal_id)
+            deal_id = None
+            if "typeA8" in submission_data and submission_data["typeA8"]:
+                deal_id = submission_data["typeA8"]
+                print(f"Found deal ID: {deal_id}")
+            else:
+                # חיפוש מזהה העסקה בכל השדות
+                print("Deal ID not found in typeA8. Checking all fields:")
+                for field_name in ["deal_id", "dealId", "dealID"]:
+                    if field_name in submission_data and submission_data[field_name]:
+                        deal_id = submission_data[field_name]
+                        print(f"Found deal ID in {field_name}: {deal_id}")
+                        break
+            
+            # אם לא נמצא מזהה עסקה
+            if not deal_id:
+                print("Deal ID not found in submission data. Cannot update deal.")
+                return {"status": "error", "message": "Deal ID not found in tax form submission data"}
+            
+            # עדכון העסקה בפייפדרייב עם נתוני שאלון המס
+            print(f"Updating Pipedrive deal {deal_id} with tax form data")
+            success = await update_pipedrive_deal_with_tax_form(deal_id, submission_data)
+            
+            if success:
+                return {"status": "success", "message": "Deal updated in Pipedrive with tax form data"}
+            else:
+                return {"status": "error", "message": "Failed to update deal in Pipedrive with tax form data"}
         else:
-            return {"status": "error", "message": "Failed to update person in Pipedrive"}
+            # משך הלוגיקה הרגילה עבור שאלונים שאינם שאלוני מס
+            # חילוץ מזהה הלקוח מהנתונים
+            client_id = None
+            if "typeA9" in submission_data and submission_data["typeA9"]:
+                client_id = submission_data["typeA9"]
+                print(f"Found client ID: {client_id}")
+            else:
+                # חיפוש מזהה הלקוח בכל השדות
+                print("Client ID not found in typeA9. Checking all fields:")
+                for field_name in ["person_id", "personId", "personID"]:
+                    if field_name in submission_data and submission_data[field_name]:
+                        client_id = submission_data[field_name]
+                        print(f"Found client ID in {field_name}: {client_id}")
+                        break
+                        
+            if not client_id:
+                print("Client ID not found in submission data. Cannot update person.")
+                return {"status": "error", "message": "Client ID not found in submission data"}
+                
+            # עדכון כרטיס הלקוח בפייפדרייב
+            print(f"Updating Pipedrive person {client_id} with form data")
+            success = await update_pipedrive_person(client_id, submission_data)
+            
+            if success:
+                return {"status": "success", "message": "Person updated in Pipedrive"}
+            else:
+                return {"status": "error", "message": "Failed to update person in Pipedrive"}
             
     except Exception as e:
         print(f"ERROR in JotForm webhook handler: {str(e)}")
@@ -1043,6 +1239,193 @@ async def update_pipedrive_person(person_id, form_data):
         
     except Exception as e:
         print(f"ERROR in update_pipedrive_person: {str(e)}")
+        print(traceback.format_exc())
+        return False
+
+# פונקציה לזיהוי שאלוני מס
+def is_tax_form_submission(submission_data):
+    """
+    בדיקה אם מדובר בשאלון מס לפי מזהה הטופס או הכותרת שלו
+    """
+    # המזהה הידוע של שאלון המס
+    tax_form_id = "222503111662038"
+    
+    # נתוני השאלון
+    form_id = ""
+    form_title = ""
+    
+    if isinstance(submission_data, dict):
+        form_id = submission_data.get("formID", "")
+        form_title = submission_data.get("formTitle", "")
+    
+    # בדיקה לפי מזהה
+    if form_id == tax_form_id:
+        return True
+    
+    # בדיקה לפי כותרת
+    tax_keywords = [
+        "החזר מס", "שאלון מס", "שאלון להחזר מס", "tax return"
+    ]
+    
+    for keyword in tax_keywords:
+        if keyword.lower() in form_title.lower():
+            return True
+    
+    return False
+
+async def update_pipedrive_deal_with_tax_form(deal_id, form_data):
+    """
+    יצירת פתק עם תשובות שאלון מס והצמדתו לעסקה (deal) בפייפדרייב
+    """
+    try:
+        if not deal_id:
+            print("Missing deal_id for tax form update")
+            return False
+
+        # יצירת תוכן הפתק מכל התשובות בשאלון
+        current_date = datetime.now().strftime("%d/%m/%Y %H:%M")
+        note_content = f"# תשובות שאלון מס {current_date}\n\n"
+        
+        # קבלת המידע על כותרות השדות
+        field_labels = {}
+        if "_metadata" in form_data and "field_labels" in form_data["_metadata"]:
+            field_labels = form_data["_metadata"]["field_labels"]
+        
+        # ערכים שיחשבו כריקים
+        empty_values = ["", "null", "undefined", None, "0", "-", "N/A", "n/a", "לא"]
+        
+        # מיון שדות לקטגוריות
+        categories = {
+            "נתונים אישיים": [],
+            "נדל\"ן ומשכנתאות": [],
+            "ייעוץ פיננסי וביטוח": [],
+            "שונות": []
+        }
+        
+        # זיהוי שדות שהשם שלהם זהה לערך (כמו שאלות כן/לא בג'וטפורם)
+        def clean_value(value):
+            """ ניקוי הערך מתווים מיוחדים להשוואה """
+            if not value:
+                return ""
+            return str(value).lower().strip().replace("?", "").replace(":", "")
+        
+        # מילות מפתח לשדות שלא רוצים להציג
+        ignored_texts = [
+            "עוגנים", "anchor", "אנכור", 
+            "תודה שמילאת", 
+            "אישורי", "הערות", 
+            "הוראות", "חתימה"
+        ]
+        
+        # רשימת שדות להתעלם מהם
+        ignored_fields = [
+            "typeA8", "typeA9", "date", "ip", "date124", "form_name", 
+            "submission_id", "control_text", "control_text_2", "control_6", "control_1",
+            "website", "submit", "submission_id", "view", "anchor1", "anchor2", "anchor3", "anchor4",
+            "submit_form", "preferred_time", "signature", "form_title", "form_id"
+        ]
+        
+        # איסוף כל השדות מהשאלון
+        items_added = 0
+        for field_name, field_value in form_data.items():
+            # דילוג על שדות ריקים, מטא-שדות ושדות להתעלמות
+            if (field_name.startswith("_") or 
+                field_name in ignored_fields or 
+                field_value in empty_values or
+                not field_value):
+                continue
+            
+            # קבלת תווית השדה
+            field_label = field_labels.get(field_name, field_name)
+            
+            # דילוג על שדות עם מילות מפתח שיש להתעלם מהן
+            skip_field = False
+            for ignored_text in ignored_texts:
+                if ignored_text.lower() in clean_value(field_label):
+                    skip_field = True
+                    break
+            if skip_field:
+                continue
+                
+            # עיצוב השדה לתצוגה בפתק
+            if isinstance(field_value, (list, tuple)):
+                field_value = ", ".join([str(v) for v in field_value if v])
+                
+            # בדיקה עבור שדות של כן/לא או בחירה בודדת
+            if clean_value(field_label) == clean_value(field_value):
+                # אם השם של השדה זהה לערך - זו כנראה שאלת כן/לא שסומנה כ'כן'
+                formatted_field = f"○ {field_label} ✓"
+            elif field_value in ["לא", "no", "No", "NO", "0", 0, False, "false", "False"]:
+                # אם זו שאלת כן/לא שסומנה כ'לא' - נציג עם סימון ✗
+                formatted_field = f"○ {field_label} ✗"
+            else:
+                # אחרת - נציג את שם השדה והערך
+                formatted_field = f"○ {field_label}: {field_value}"
+            
+            # הוספה לקטגוריה המתאימה לפי מיפוי השדות
+            category_assigned = False
+            for category, field_list in TAX_FORM_CATEGORIES.items():
+                if field_name in field_list:
+                    categories[category].append(formatted_field)
+                    category_assigned = True
+                    break
+            
+            # אם לא מצאנו קטגוריה מתאימה - נוסיף לשונות
+            if not category_assigned:
+                categories["שונות"].append(formatted_field)
+            
+            items_added += 1
+        
+        # הסרת כפילויות בכל קטגוריה
+        for category in categories:
+            unique_fields = {}
+            for field in categories[category]:
+                field_parts = field.split("○ ")
+                if len(field_parts) >= 2:
+                    field_title = field_parts[1].split(" ✓")[0].split(" ✗")[0].split(":")[0].strip()
+                    if field_title not in unique_fields or len(field) < len(unique_fields[field_title]):
+                        unique_fields[field_title] = field
+            
+            # החלפת הרשימה המקורית עם הרשימה ללא כפילויות
+            categories[category] = list(unique_fields.values())
+            
+            # מיון השדות לפי א-ב
+            categories[category].sort()
+        
+        # בניית תוכן הפתק לפי קטגוריות
+        for category, fields in categories.items():
+            if fields:  # רק אם יש שדות בקטגוריה
+                note_content += f"## {category}\n"
+                for field in fields:
+                    note_content += f"{field}\n"
+                note_content += "\n"
+        
+        # הוספת פתק רק אם יש תוכן משמעותי
+        if items_added > 0:
+            # שליחת הנתונים לפייפדרייב
+            note_data = {
+                "content": note_content,
+                "deal_id": deal_id
+            }
+            
+            # שליחת הבקשה ליצירת פתק
+            note_url = f"https://api.pipedrive.com/v1/notes?api_token={PIPEDRIVE_API_KEY}"
+            response = requests.post(note_url, json=note_data)
+            
+            print(f"Added tax form note to deal {deal_id} with {items_added} items.")
+            
+            if response.status_code in [200, 201]:
+                return True
+            else:
+                print(f"Failed to add note to deal. Status code: {response.status_code}")
+                print(f"Response: {response.text[:200]}")
+                return False
+        else:
+            print(f"No valid form fields found, skipping note creation for deal {deal_id}")
+            return False
+    
+    except Exception as e:
+        print(f"ERROR creating note for tax form: {str(e)}")
         print(traceback.format_exc())
         return False
 
