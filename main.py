@@ -1395,10 +1395,18 @@ async def update_pipedrive_deal_with_tax_form(deal_id, form_data):
         # בניית תוכן הפתק לפי קטגוריות
         for category, fields in categories.items():
             if fields:  # רק אם יש שדות בקטגוריה
-                note_content += f"## {category}\n"
+                note_content += f"## {category}\n\n"
                 for field in fields:
-                    note_content += f"{field}\n"
-                note_content += "\n"
+                    note_content += f"{field}\n\n"
+                note_content += "---\n\n"  # מפריד בין קטגוריות
+        
+        # הסרת הסימון האחרון של מפריד בסוף הפתק
+        if note_content.endswith("---\n\n"):
+            note_content = note_content[:-5]
+        
+        # הוספת סיכום
+        if items_added > 0:
+            note_content += f"\n\nסהכ: {items_added} שדות מידע נאספו בשאלון המס."
         
         # הוספת פתק רק אם יש תוכן משמעותי
         if items_added > 0:
