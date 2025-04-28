@@ -44,6 +44,18 @@ DEAL_TYPE_TO_FORM = {
     # ניתן להוסיף עוד סוגי עסקאות ושאלונים כאן
 }
 
+# יצירת אפליקציית FastAPI
+app = FastAPI()
+
+# הוספת middleware ל-CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 class ActivitiesManager:
     def __init__(self):
         pass
@@ -394,8 +406,6 @@ async def create_deal_form_activity(deal_id, deal_data):
         deal_id_str = str(deal_id) if deal_id is not None else ""
         person_id_str = str(person_id) if person_id is not None else ""
         
-<<<<<<< HEAD
-=======
         # בדיקה אם כבר יצרנו פעילות כזו לעסקה זו
         activity_key = f"deal_form_{deal_id}_{form_id}"
         if activity_key in task_history:
@@ -636,18 +646,14 @@ async def create_deal_form_activity(deal_id, deal_data):
                 print(f"Direct field access: Found marital status: {marital_status} from key {key}")
                 break
             
->>>>>>> b6ae0aef3bf38d70f710544df9eb437356bdb537
         # וידוא שכל הערכים מומרים למחרוזות או ריקים
         first_name = str(first_name) if first_name is not None else ""
         last_name = str(last_name) if last_name is not None else ""
         phone = str(phone) if phone is not None else ""
         email = str(email) if email is not None else ""
         id_number = str(id_number) if id_number is not None else ""
-<<<<<<< HEAD
         
-        # יצירת קישור לשאלון עם כל הפרטים שחילצנו
-        jotform_url = f"https://form.jotform.com/{form_id}?dealId={deal_id_str}&personId={person_id_str}&firstName={urllib.parse.quote(first_name)}&lastName={urllib.parse.quote(last_name)}&phone={urllib.parse.quote(phone)}&email={urllib.parse.quote(email)}&idNumber={urllib.parse.quote(id_number)}"
-=======
+        # המרת משתנים נוספים למחרוזות
         birth_date = str(birth_date) if birth_date is not None else ""
         children_number = str(children_number) if children_number is not None else ""
         marital_status = str(marital_status) if marital_status is not None else ""
@@ -660,7 +666,9 @@ async def create_deal_form_activity(deal_id, deal_data):
             f"typeA9={person_id_str}&" + \
             f"name={urllib.parse.quote(first_name)}&" + \
             f"Lname={urllib.parse.quote(last_name)}&" + \
-            f"phoneNumber={urllib.parse.quote(phone)}&"
+            f"phoneNumber={urllib.parse.quote(phone)}&" + \
+            f"email={urllib.parse.quote(email)}&" + \
+            f"idNumber={urllib.parse.quote(id_number)}&"
 
         # הוספת מספר תעודת זהות בכל האפשרויות
         jotform_url += f"input109={urllib.parse.quote(id_number)}&" + \
@@ -688,7 +696,6 @@ async def create_deal_form_activity(deal_id, deal_data):
         print(f"- Birth Date (input117): {birth_date}")
         print(f"- Marital Status (input107): {marital_status}")
         print(f"- Children Number (typeA23): {children_number}")
->>>>>>> b6ae0aef3bf38d70f710544df9eb437356bdb537
         print(f"Generated form URL: {jotform_url}")
         
         # קיצור הקישור באמצעות Bitly
@@ -714,23 +721,8 @@ async def create_deal_form_activity(deal_id, deal_data):
         except Exception as e:
             print(f"Error shortening URL with Bitly: {str(e)}")
             # במקרה של שגיאה, נשתמש בקישור המקורי
-        
-<<<<<<< HEAD
-        # בדיקה אם כבר יצרנו פעילות כזו לעסקה זו
-        activity_key = f"deal_form_{deal_id}_{form_id}"
-        if activity_key in task_history:
-            print(f"Form link activity already exists for deal {deal_id} and form {form_id}")
-            return
-        
-        # קבלת פרטי הלקוח מפייפדרייב
-        person_name = "לקוח"
-        first_name = ""
-        last_name = ""
-        phone = ""
-        email = ""
-        id_number = ""
-        
-        if person_id:
+            
+        # המשך התהליך ליצירת משימה עם הקישור המקוצר
             try:
                 print(f"Fetching person details for person_id: {person_id}")
                 person_url = f"https://api.pipedrive.com/v1/persons/{person_id}?api_token={PIPEDRIVE_API_KEY}"
@@ -767,8 +759,6 @@ async def create_deal_form_activity(deal_id, deal_data):
             except Exception as e:
                 print(f"Error fetching person details: {e}")
         
-=======
->>>>>>> b6ae0aef3bf38d70f710544df9eb437356bdb537
         # יצירת פעילות חדשה בפייפדרייב
         activity_data = {
             "subject": f"שאלון להחזר מס ל{person_name}",  # שימוש בערך ישיר במקום form_name למניעת כפל
