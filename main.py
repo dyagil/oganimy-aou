@@ -1,25 +1,39 @@
 from fastapi import FastAPI, Request, BackgroundTasks
 import requests
-import os
-import uvicorn
+import asyncio
+import hashlib
 import json
+import os
 import time
 import traceback
-import hashlib
 import urllib.parse
 from datetime import datetime, timedelta
+from typing import Dict, Optional, Set, Tuple, Any
+
+import requests
 from dateutil import parser
 from dotenv import load_dotenv
+from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
-# טען משתני סביבה מקובץ .env (אם קיים)
-load_dotenv()
-
-app = FastAPI()
+# ייבוא הפונקציות החדשות לטיפול בשאלוני מס
+from tax_form_utils import update_pipedrive_deal_with_tax_form, is_tax_form_submission
 
 JOTFORM_URL = "https://form.jotform.com/202432710986455"
-PIPEDRIVE_API_KEY = os.getenv("PIPEDRIVE_API_KEY", "TO_BE_REPLACED")  # יוחלף ב-Railway כ-ENV
-BITLY_ACCESS_TOKEN = os.getenv("BITLY_ACCESS_TOKEN", "b77d50a5804d68a3762d38bad84749be9b1b0fc2")
-JOTFORM_API_KEY = os.getenv("JOTFORM_API_KEY", "TO_BE_REPLACED")  # יש להוסיף מפתח API של JotForm
+
+# קבלת משתני סביבה
+load_dotenv()
+
+PIPEDRIVE_API_KEY = os.getenv("PIPEDRIVE_API_KEY")
+if not PIPEDRIVE_API_KEY:
+    raise ValueError("חסר מפתח API של Pipedrive. נדרש להגדיר את PIPEDRIVE_API_KEY")
+
+BITLY_ACCESS_TOKEN = os.getenv("BITLY_ACCESS_TOKEN")
+
+# נתונים גלובליים לחיבור עם API ואחסון היסטוריה למניעת כפילויות
+JOTFORM_API_KEY = os.getenv("JOTFORM_API_KEY")
+if not JOTFORM_API_KEY:
+    print("Warning: JOTFORM_API_KEY is not set. JotForm submission processing will not work properly.")
 
 # מיפוי בין סוגי עסקאות לשאלונים ספציפיים
 DEAL_TYPE_TO_FORM = {
@@ -351,9 +365,15 @@ async def create_deal_form_activity(deal_id, deal_data):
         print(f"Checking if deal title '{title}' matches any of our form types...")
         print(f"Available form types: {', '.join(DEAL_TYPE_TO_FORM.keys())}")
         
+        # זיהוי משופר של סוג העסקה
+        title_lower = title.lower()
+        
         for deal_type_key in DEAL_TYPE_TO_FORM.keys():
-            print(f"Checking if '{deal_type_key}' is in '{title}'")
-            if deal_type_key in title:
+            print(f"Checking if '{deal_type_key}' appears in '{title}'")
+            # בדיקה גמישה יותר
+            if deal_type_key.lower() in title_lower or \
+               f"בדיקת {deal_type_key.lower()}" in title_lower or \
+               f"שאלון {deal_type_key.lower()}" in title_lower:
                 deal_type = deal_type_key
                 print(f"MATCH FOUND! Deal type: {deal_type}")
                 break
@@ -374,15 +394,301 @@ async def create_deal_form_activity(deal_id, deal_data):
         deal_id_str = str(deal_id) if deal_id is not None else ""
         person_id_str = str(person_id) if person_id is not None else ""
         
+<<<<<<< HEAD
+=======
+        # בדיקה אם כבר יצרנו פעילות כזו לעסקה זו
+        activity_key = f"deal_form_{deal_id}_{form_id}"
+        if activity_key in task_history:
+            print(f"Form link activity already exists for deal {deal_id} and form {form_id}")
+            return
+        
+        # הגדרת משתנים לפרטי הלקוח
+        person_name = "לקוח"
+        first_name = ""
+        last_name = ""
+        phone = ""
+        email = ""
+        id_number = ""
+        birth_date = ""
+        children_number = ""
+        marital_status = ""
+        
+        if person_id:
+            try:
+                print(f"Fetching person details for person_id: {person_id}")
+                person_url = f"https://api.pipedrive.com/v1/persons/{person_id}?api_token={PIPEDRIVE_API_KEY}"
+                response = requests.get(person_url)
+                if response.status_code == 200:
+                    person_data = response.json().get("data", {})
+                    
+                    # חילוץ פרטי איש הקשר בצורה בטוחה
+                    first_name = person_data.get("first_name", "")
+                    last_name = person_data.get("last_name", "")
+                    person_name = f"{first_name} {last_name}".strip() or "לקוח"
+                    
+                    # פרטי התקשרות
+                    if person_data.get("phone") and len(person_data.get("phone", [])) > 0:
+                        phone = person_data.get("phone", [{}])[0].get("value", "")
+                    
+                    if person_data.get("email") and len(person_data.get("email", [])) > 0:
+                        email = person_data.get("email", [{}])[0].get("value", "")
+                    
+                    # ניסיון לחלץ מספר תעודת זהות, תאריך לידה, מצב משפחתי ומספר ילדים משדות מותאמים אישית
+                    custom_fields = person_data.get("custom_fields", {})
+                    
+                    # הצגת כל השדות המותאמים אישית - עוזר לאיתור שדות חסרים
+                    print("=== CUSTOM FIELDS ===\nKey = Value")
+                    
+                    # שמירת כל השדות המותאמים אישית בדיקשנרי לשימוש מאוחר יותר
+                    all_fields = {}
+                    
+                    for key, value in custom_fields.items():
+                        if value is not None and value != "":
+                            all_fields[key] = value
+                        print(f"Field: {key} = {value}")
+                        
+                    id_number = None
+                    birth_date = None
+                    children_number = None
+                    marital_status = None
+                    
+                    # === חיפוש לפי מזהים ספציפיים שמצאנו בלוג ===
+                    
+                    # === חיפוש מספר תעודת זהות ===
+                    try:
+                        if "298a5a71694995d831cd85c12084b71714234057" in custom_fields:
+                            field_value = custom_fields["298a5a71694995d831cd85c12084b71714234057"]
+                            if field_value:
+                                raw_id = str(field_value)
+                                id_number = ''.join(c for c in raw_id if c.isdigit())
+                                print(f"Found ID from specific field 298a5a71694995d831cd85c12084b71714234057: {id_number} (raw: {raw_id})")
+                            else:
+                                print(f"Field 298a5a71694995d831cd85c12084b71714234057 exists but value is empty or None")
+                        else:
+                            print(f"Field 298a5a71694995d831cd85c12084b71714234057 not found in custom_fields")
+                            # מציאת מפתחות דומים אם המפתח המדויק לא נמצא
+                            for key in custom_fields.keys():
+                                if "298a5a71694995d831cd85c12084b71714234057"[:8] in key:
+                                    print(f"Found similar ID field key: {key}")
+                    except Exception as e:
+                        print(f"Error while looking for ID field: {e}")
+                    
+                    # === חיפוש תאריך לידה ===
+                    try:
+                        if "ab7c49cd143665a08d4f4d24fcd33a5597c003fd" in custom_fields:
+                            field_value = custom_fields["ab7c49cd143665a08d4f4d24fcd33a5597c003fd"]
+                            if field_value:
+                                birth_date_raw = str(field_value)
+                                print(f"Raw birth date: {birth_date_raw}")
+                                try:
+                                    birth_date_obj = parser.parse(birth_date_raw)
+                                    birth_date = birth_date_obj.strftime("%d/%m/%Y")
+                                    print(f"Found birth date from specific field ab7c49cd143665a08d4f4d24fcd33a5597c003fd: {birth_date}")
+                                except Exception as e:
+                                    print(f"Error parsing birth date: {e}, using raw value")
+                                    birth_date = birth_date_raw
+                            else:
+                                print(f"Field ab7c49cd143665a08d4f4d24fcd33a5597c003fd exists but value is empty or None")
+                        else:
+                            print(f"Field ab7c49cd143665a08d4f4d24fcd33a5597c003fd not found in custom_fields")
+                            # מציאת מפתחות דומים אם המפתח המדויק לא נמצא
+                            for key in custom_fields.keys():
+                                if "ab7c49cd143665a08d4f4d24fcd33a5597c003fd"[:8] in key:
+                                    print(f"Found similar birth date field key: {key}")
+                    except Exception as e:
+                        print(f"Error while looking for birth date field: {e}")
+                    
+                    # === חיפוש מספר ילדים ===
+                    try:
+                        if "62c775c3816aa805892280fad530d42bc1813512" in custom_fields:
+                            field_value = custom_fields["62c775c3816aa805892280fad530d42bc1813512"]
+                            if field_value:
+                                children_number = str(field_value)
+                                print(f"Found children number from specific field 62c775c3816aa805892280fad530d42bc1813512: {children_number}")
+                            else:
+                                print(f"Field 62c775c3816aa805892280fad530d42bc1813512 exists but value is empty or None")
+                        else:
+                            print(f"Field 62c775c3816aa805892280fad530d42bc1813512 not found in custom_fields")
+                            # מציאת מפתחות דומים אם המפתח המדויק לא נמצא
+                            for key in custom_fields.keys():
+                                if "62c775c3816aa805892280fad530d42bc1813512"[:8] in key:
+                                    print(f"Found similar children field key: {key}")
+                    except Exception as e:
+                        print(f"Error while looking for children field: {e}")
+                    
+                    # === חיפוש מצב משפחתי ===
+                    try:
+                        if "e54db6d7f2d66f2b568ab5debf077fa27622bf38" in custom_fields:
+                            field_value = custom_fields["e54db6d7f2d66f2b568ab5debf077fa27622bf38"]
+                            if field_value:
+                                marital_status = str(field_value)
+                                print(f"Found marital status from specific field e54db6d7f2d66f2b568ab5debf077fa27622bf38: {marital_status}")
+                            else:
+                                print(f"Field e54db6d7f2d66f2b568ab5debf077fa27622bf38 exists but value is empty or None")
+                        else:
+                            print(f"Field e54db6d7f2d66f2b568ab5debf077fa27622bf38 not found in custom_fields")
+                            # מציאת מפתחות דומים אם המפתח המדויק לא נמצא
+                            for key in custom_fields.keys():
+                                if "e54db6d7f2d66f2b568ab5debf077fa27622bf38"[:8] in key:
+                                    print(f"Found similar marital field key: {key}")
+                    except Exception as e:
+                        print(f"Error while looking for marital field: {e}")
+                    
+                    # הדפסת סיכום של השדות שנמצאו
+                    print(f"Found specific fields summary: ID={id_number}, birth_date={birth_date}, children={children_number}, marital_status={marital_status}")
+                    
+                    # מניעת חיפוש כללי יותר, כי כבר יש לנו את הערכים המדוייקים
+                    
+                    # === חיפוש מספר תעודת זהות ===
+                    for field_key, field_value in custom_fields.items():
+                        if field_value and ("\u05de\u05e1\u05e4\u05e8 \u05ea\u05e2\u05d5\u05d3\u05ea \u05d6\u05d4\u05d5\u05ea" in str(field_key).lower() or 
+                                          "id" in str(field_key).lower() or 
+                                          "\u05ea\u05d6" in str(field_key).lower()):
+                            # ניקוי המספר - הסרת רווחים, מקפים ותווים מיוחדים
+                            raw_id = str(field_value) if field_value else ""
+                            # שומר רק את הספרות במספר
+                            id_number = ''.join(c for c in raw_id if c.isdigit())
+                            print(f"Found ID number: {id_number} (original: {raw_id})")
+                            break
+                    
+                    # חיפוש תאריך לידה
+                    for field_key, field_value in custom_fields.items():
+                        if field_value and ("\u05ea\u05d0\u05e8\u05d9\u05da \u05dc\u05d9\u05d3\u05d4" in str(field_key).lower() or 
+                                          "birth date" in str(field_key).lower() or 
+                                          "birthday" in str(field_key).lower() or
+                                          "date of birth" in str(field_key).lower()):
+                            # המרת תאריך לפורמט הנכון לג'וטפורם - נסיון עם כמה פורמטים
+                            try:
+                                birth_date_obj = parser.parse(str(field_value)) if field_value else None
+                                if birth_date_obj:
+                                    # שימוש בפורמט DD/MM/YYYY הנדרש עבור שאלון מס
+                                    birth_date = birth_date_obj.strftime("%d/%m/%Y")
+                                    print(f"Found birth date: {birth_date}")
+                            except:
+                                # אם התאריך כבר בפורמט חוקי, משאיר אותו כמו שהוא
+                                birth_date = str(field_value)
+                                print(f"Found birth date (as string): {birth_date}")
+                            break
+                    
+                    # חיפוש מצב משפחתי
+                    for field_key, field_value in custom_fields.items():
+                        if field_value and ("\u05de\u05e6\u05d1 \u05de\u05e9\u05e4\u05d7\u05ea\u05d9" in str(field_key).lower() or 
+                                          "marital status" in str(field_key).lower() or 
+                                          "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05de\u05e9\u05e4\u05d7\u05ea\u05d9" in str(field_key).lower()):
+                            marital_status = str(field_value)
+                            print(f"Found marital status: {marital_status}")
+                            break
+                            
+                    # חיפוש מספר ילדים
+                    for field_key, field_value in custom_fields.items():
+                        if field_value and ("\u05de\u05e1\u05e4\u05e8 \u05d9\u05dc\u05d3\u05d9\u05dd" in str(field_key).lower() or 
+                                          "children" in str(field_key).lower() or 
+                                          "number of kids" in str(field_key).lower()):
+                            children_number = str(field_value)
+                            print(f"Found number of children: {children_number}")
+                            break
+                    
+                    print(f"Retrieved person details: {first_name} {last_name}, phone: {phone}, email: {email}, id: {id_number}, birth date: {birth_date}, marital status: {marital_status}, children: {children_number}")
+                else:
+                    print(f"Failed to get person details: {response.status_code}")
+            except Exception as e:
+                print(f"Error fetching person details: {e}")
+                
+        # בדיקה ישירה של מזהים ספציפיים בפייפדרייב (בכל השדות שמצאנו)
+        # ת.ז
+        id_field_keys = ["298a5a71694995d831cd85c12084b71714234057", "ba54a5a219e788e260dc012a6b483bbfaa8f7e52"]
+        for key in id_field_keys:
+            if not id_number and key in all_fields:
+                raw_id = str(all_fields[key])
+                id_number = ''.join(c for c in raw_id if c.isdigit())
+                print(f"Direct field access: Found ID: {id_number} from key {key}")
+                break
+        
+        # תאריך לידה
+        birth_date_keys = ["ab7c49cd143665a08d4f4d24fcd33a5597c003fd", "BB-DATHE"]
+        for key in birth_date_keys:
+            if not birth_date and key in all_fields:
+                try:
+                    birth_date_raw = str(all_fields[key])
+                    birth_date_obj = parser.parse(birth_date_raw)
+                    birth_date = birth_date_obj.strftime("%d/%m/%Y")
+                    print(f"Direct field access: Found birth date: {birth_date} from key {key}")
+                    break
+                except Exception as e:
+                    print(f"Error parsing direct birth date from key {key}: {e}")
+                    birth_date = birth_date_raw
+                    print(f"Using raw birth date: {birth_date}")
+                    break
+        
+        # מספר ילדים
+        children_keys = ["62c775c3816aa805892280fad530d42bc1813512", "typeA23"]
+        for key in children_keys:
+            if not children_number and key in all_fields:
+                children_number = str(all_fields[key])
+                print(f"Direct field access: Found children number: {children_number} from key {key}")
+                break
+        
+        # מצב משפחתי
+        marital_keys = ["e54db6d7f2d66f2b568ab5debf077fa27622bf38", "input107", "typeA21"]
+        for key in marital_keys:
+            if not marital_status and key in all_fields:
+                marital_status = str(all_fields[key])
+                print(f"Direct field access: Found marital status: {marital_status} from key {key}")
+                break
+            
+>>>>>>> b6ae0aef3bf38d70f710544df9eb437356bdb537
         # וידוא שכל הערכים מומרים למחרוזות או ריקים
         first_name = str(first_name) if first_name is not None else ""
         last_name = str(last_name) if last_name is not None else ""
         phone = str(phone) if phone is not None else ""
         email = str(email) if email is not None else ""
         id_number = str(id_number) if id_number is not None else ""
+<<<<<<< HEAD
         
         # יצירת קישור לשאלון עם כל הפרטים שחילצנו
         jotform_url = f"https://form.jotform.com/{form_id}?dealId={deal_id_str}&personId={person_id_str}&firstName={urllib.parse.quote(first_name)}&lastName={urllib.parse.quote(last_name)}&phone={urllib.parse.quote(phone)}&email={urllib.parse.quote(email)}&idNumber={urllib.parse.quote(id_number)}"
+=======
+        birth_date = str(birth_date) if birth_date is not None else ""
+        children_number = str(children_number) if children_number is not None else ""
+        marital_status = str(marital_status) if marital_status is not None else ""
+        
+        # יצירת קישור לשאלון עם הפרמטרים הנכונים לטופס JotForm
+        # שימוש בשמות הפרמטרים המדויקים כפי שמופיעים בטופס JotForm
+        # שימוש בכל האפשרויות של שמות שדות כדי להבטיח שהנתונים יעברו כראוי
+        jotform_url = f"https://form.jotform.com/{form_id}?" + \
+            f"typeA8={deal_id_str}&" + \
+            f"typeA9={person_id_str}&" + \
+            f"name={urllib.parse.quote(first_name)}&" + \
+            f"Lname={urllib.parse.quote(last_name)}&" + \
+            f"phoneNumber={urllib.parse.quote(phone)}&"
+
+        # הוספת מספר תעודת זהות בכל האפשרויות
+        jotform_url += f"input109={urllib.parse.quote(id_number)}&" + \
+                     f"typeA={urllib.parse.quote(id_number)}&"
+
+        # הוספת תאריך לידה בכל האפשרויות
+        jotform_url += f"input117={urllib.parse.quote(birth_date)}&" + \
+                     f"BB-DATHE={urllib.parse.quote(birth_date)}&"
+
+        # הוספת מצב משפחתי בכל האפשרויות
+        jotform_url += f"input107={urllib.parse.quote(marital_status)}&" + \
+                     f"typeA21={urllib.parse.quote(marital_status)}&"
+
+        # הוספת מספר ילדים בכל האפשרויות
+        jotform_url += f"typeA23={urllib.parse.quote(children_number)}"
+            
+        # הוספת לוגים מפורטים לכל הפרמטרים - חשוב לדיבוג
+        print(f"JotForm parameters used:")
+        print(f"- Deal ID (typeA8): {deal_id_str}")
+        print(f"- Person ID (typeA9): {person_id_str}")
+        print(f"- First Name (name): {first_name}")
+        print(f"- Last Name (Lname): {last_name}")
+        print(f"- Phone (phoneNumber): {phone}")
+        print(f"- ID Number (input109): {id_number}")
+        print(f"- Birth Date (input117): {birth_date}")
+        print(f"- Marital Status (input107): {marital_status}")
+        print(f"- Children Number (typeA23): {children_number}")
+>>>>>>> b6ae0aef3bf38d70f710544df9eb437356bdb537
         print(f"Generated form URL: {jotform_url}")
         
         # קיצור הקישור באמצעות Bitly
@@ -409,6 +715,7 @@ async def create_deal_form_activity(deal_id, deal_data):
             print(f"Error shortening URL with Bitly: {str(e)}")
             # במקרה של שגיאה, נשתמש בקישור המקורי
         
+<<<<<<< HEAD
         # בדיקה אם כבר יצרנו פעילות כזו לעסקה זו
         activity_key = f"deal_form_{deal_id}_{form_id}"
         if activity_key in task_history:
@@ -460,15 +767,17 @@ async def create_deal_form_activity(deal_id, deal_data):
             except Exception as e:
                 print(f"Error fetching person details: {e}")
         
+=======
+>>>>>>> b6ae0aef3bf38d70f710544df9eb437356bdb537
         # יצירת פעילות חדשה בפייפדרייב
         activity_data = {
-            "subject": f"שאלון {form_name} ל{person_name}",
+            "subject": f"שאלון להחזר מס ל{person_name}",  # שימוש בערך ישיר במקום form_name למניעת כפל
             "type": "task",
             "due_date": (datetime.now() + timedelta(days=3)).strftime('%Y-%m-%d'),
             "due_time": "12:00",
             "deal_id": deal_id,
             "person_id": person_id,
-            "note": f"קישור לשאלון {form_name}: {jotform_url}",
+            "note": f"קישור לשאלון החזר מס: {jotform_url}",  # שימוש בערך ישיר במקום form_name
         }
         
         print(f"Creating activity with data: {json.dumps(activity_data)}")
@@ -622,11 +931,13 @@ async def handle_jotform_webhook(request: Request):
             
         # מידע ההגשה
         submission_id = form_data.get("submissionID")
+        form_id = form_data.get("formID")
+        form_title = form_data.get("formTitle", "")
         
         if not submission_id:
             return {"status": "error", "message": "Submission ID not found in webhook data"}
             
-        print(f"Received webhook for submission ID: {submission_id}")
+        print(f"Received webhook for submission ID: {submission_id}, Form ID: {form_id}, Title: {form_title}")
         
         # שליפת מידע מלא על ההגשה דרך ה-API של JotForm
         submission_data = await get_jotform_submission(submission_id)
@@ -640,25 +951,75 @@ async def handle_jotform_webhook(request: Request):
             if not key.startswith('_'):  # להתעלם ממטה-דאטה
                 shortened_value = str(value)[:100] + ('...' if len(str(value)) > 100 else '')
                 print(f"  {key}: {shortened_value}")
-            
-        # חילוץ מזהה הלקוח מהנתונים
-        client_id = None
-        if "typeA9" in submission_data and submission_data["typeA9"]:
-            client_id = submission_data["typeA9"]
-            print(f"Found client ID: {client_id}")
-        else:
-            print("Client ID not found in form data. Checking all fields:")
-            for field, value in submission_data.items():
-                print(f"Field: {field}, Value: {value}")
-            return {"status": "error", "message": "Client ID not found in submission data"}
-            
-        # עדכון כרטיס הלקוח בפייפדרייב
-        success = await update_pipedrive_person(client_id, submission_data)
         
-        if success:
-            return {"status": "success", "message": "Person updated in Pipedrive"}
+        # בדיקה אם מדובר בשאלון מס
+        # העברת כל אובייקט ה-submission_data לפונקציה
+        is_tax_form = is_tax_form_submission(submission_data)
+        print(f"Form type detection: Is tax form = {is_tax_form}")
+        
+        if is_tax_form:
+            # עבור שאלון מס, צריך לעדכן את הדיל ולא את כרטיס הלקוח
+            # חילוץ מזהה הדיל ומזהה הלקוח מהנתונים
+            deal_id = None
+            client_id = None
+            
+            if "typeA8" in submission_data and submission_data["typeA8"]:
+                deal_id = submission_data["typeA8"]
+                print(f"Found deal ID: {deal_id}")
+            
+            if "typeA9" in submission_data and submission_data["typeA9"]:
+                client_id = submission_data["typeA9"]
+                print(f"Found client ID: {client_id}")
+            
+            if not deal_id:
+                print("Deal ID not found in tax form data. Checking all fields:")
+                for field, value in submission_data.items():
+                    print(f"Field: {field}, Value: {value}")
+                
+                if client_id:
+                    # אם אין מזהה דיל אבל יש מזהה לקוח, ננסה למצוא דיל החזר מס פעיל עבור הלקוח
+                    print(f"Trying to find active tax return deal for client {client_id}")
+                    deals_url = f"https://api.pipedrive.com/v1/deals?person_id={client_id}&status=open&api_token={PIPEDRIVE_API_KEY}"
+                    response = requests.get(deals_url)
+                    
+                    if response.status_code == 200:
+                        deals_data = response.json().get("data", [])
+                        for deal in deals_data:
+                            if "החזר מס" in deal.get("title", ""):
+                                deal_id = deal.get("id")
+                                print(f"Found tax return deal: {deal_id}")
+                                break
+            
+            if deal_id:
+                # עדכון הדיל בפייפדרייב עם נתוני שאלון המס
+                # קריאה לפונקציה עם הפרמטרים הנכונים
+                success = await update_pipedrive_deal_with_tax_form(deal_id, submission_data)
+                
+                if success:
+                    return {"status": "success", "message": "Tax form data added to deal in Pipedrive"}
+                else:
+                    return {"status": "error", "message": "Failed to update deal with tax form data"}
+            else:
+                return {"status": "error", "message": "Could not find appropriate deal for tax form data"}
         else:
-            return {"status": "error", "message": "Failed to update person in Pipedrive"}
+            # שאלון רגיל - חילוץ מזהה הלקוח
+            client_id = None
+            if "typeA9" in submission_data and submission_data["typeA9"]:
+                client_id = submission_data["typeA9"]
+                print(f"Found client ID: {client_id}")
+            else:
+                print("Client ID not found in form data. Checking all fields:")
+                for field, value in submission_data.items():
+                    print(f"Field: {field}, Value: {value}")
+                return {"status": "error", "message": "Client ID not found in submission data"}
+                
+            # עדכון כרטיס הלקוח בפייפדרייב
+            success = await update_pipedrive_person(client_id, submission_data)
+            
+            if success:
+                return {"status": "success", "message": "Person updated in Pipedrive"}
+            else:
+                return {"status": "error", "message": "Failed to update person in Pipedrive"}
             
     except Exception as e:
         print(f"ERROR in JotForm webhook handler: {str(e)}")
